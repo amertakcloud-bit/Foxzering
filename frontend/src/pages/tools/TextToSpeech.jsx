@@ -248,7 +248,7 @@ export default function TextToSpeech() {
             </div>
           </div>
 
-          {!edge && <div className="tts-field" style={{ fontFamily: "Kantumruy"}}>
+          {!edge && <div className="tts-field" style={{ fontFamily: "Kantumruy Bold"}}>
             <p className="tts-label"><i className="ri-emotion-line" aria-hidden="true" /> {km ? "រចនាប័ទ្មសម្លេង" : "Style"}</p>
             <Select value={style} onChange={(e) => setStyle(e.target.value)}>
               {Object.entries(STYLE_LABELS).map(([k, [en, kh]]) => <option key={k} value={k}><i className={STYLE_ICONS[k]} aria-hidden="true" /> {km ? kh : en}</option>)}

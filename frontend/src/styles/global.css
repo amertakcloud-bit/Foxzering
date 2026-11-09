@@ -15,7 +15,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Nunito', 'Noto', 'Kantumruy', 'Kdamthmor';
+  font-family: 'Kantumruy', 'Kdamthmor';
   -webkit-font-smoothing: antialiased;
   transition: background var(--transition), color var(--transition);
   user-select: none;
@@ -98,7 +98,7 @@ code {
 }
 
 button {
-  font-family: 'Kantumruy' !important;
+  font-family: 'Kantumruy Bold' !important;
   cursor: pointer;
   border: none;
   background: none;
@@ -106,7 +106,7 @@ button {
 }
 
 b, label, strong {
-  font-family: "Kantumruy";
+  font-family: "Kantumruy Bold";
   font-weight: normal;
 }
 
@@ -117,7 +117,7 @@ ul {
 }
 
 input {
-    font-family: 'Kantumruy' !important;
+    font-family: 'Kantumruy Bold' !important;
 }
 
 /* Scrollbar (dark-friendly) */
@@ -145,7 +145,7 @@ input:focus-visible {
   display: flex;
   align-items: center;
   gap: .5rem;
-  font-family: 'Kantumruy';
+  font-family: 'Kantumruy Bold';
 }
 
 .center {
@@ -165,8 +165,13 @@ input:focus-visible {
 
 /* ------ Font  -------- */
 @font-face {
-  font-family: 'Kantumruy';
+  font-family: 'Kantumruy Bold';
   src: url(../assets/fonts/KantumruyPro-Bold.ttf);
+}
+
+@font-face {
+  font-family: 'Kantumruy';
+  src: url(../assets/fonts/KantumruyPro-Regular.ttf);
 }
 
 @font-face {

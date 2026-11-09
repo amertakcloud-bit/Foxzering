@@ -3,7 +3,7 @@ import { activeWordIndex, animFx, captionView, cropRect, clipEnd, clipsAt, DEFAU
 // Realtime preview + export engine.
 // One <video>/<audio>/<img> element per clip, drawn onto a canvas; audio goes through WebAudio so
 // the very same graph can be recorded for export (canvas.captureStream + MediaRecorder).
-const KH = '"Kantumruy Pro","Kantumruy","Noto Sans Khmer","Noto Sans SC"';
+const KH = '"Kantumruy Pro","Kantumruy Bold", "Kantumruy Bold","Noto Sans Khmer","Noto Sans SC"';
 export const FONTS = {
   sans: `${KH},system-ui,sans-serif`,
   serif: `"Noto Serif Khmer","Noto Serif SC",Georgia,"Times New Roman",serif`,

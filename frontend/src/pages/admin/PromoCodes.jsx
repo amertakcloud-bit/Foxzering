@@ -83,7 +83,7 @@ export default function PromoCodes() {
         <h2>Manage discount codes</h2>
         <span className="admin-panel-action">
           <button
-            className="admin-btn admin-btn-primary"
+            className="primary-btn"
             onClick={() => navigate("/admin/promo-codes/new", { replace: true })}
           >
             <i className="ri-add-line" aria-hidden="true"></i>

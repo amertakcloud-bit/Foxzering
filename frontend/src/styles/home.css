@@ -57,7 +57,7 @@
   }
 
   .page-subtitle {
-    font-family: "kantumruy";
+    font-family: "Kantumruy Bold";
     font-size: 1.5rem;
   }
 }
@@ -84,7 +84,7 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 1rem;
-    font-family: "Kantumruy";
+    font-family: "Kantumruy Bold";
 
     i {
       font-size: 1.5rem;

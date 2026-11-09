@@ -64,7 +64,7 @@
   border-radius: 10px;
   font-weight: 500;
   transition: background var(--transition), transform var(--transition);
-  font-family: "Kantumruy" !important;
+  font-family: "Kantumruy Bold" !important;
 
   span, p {
     color: var(--bg);

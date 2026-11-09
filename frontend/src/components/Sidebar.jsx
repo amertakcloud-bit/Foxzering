@@ -32,6 +32,7 @@ function Sidebar({ isOpen, onClose, isCollapsed }) {
         ...item,
         path: "/admin/dashboard",
         children: [
+          { labelKey: "overView", icon: "ri-dashboard-line", path: "/admin/overview" },
           { labelKey: "users", icon: "ri-group-line", path: "/admin/dashboard" },
           ...(can(user, "payments.read") ? [{ labelKey: "payments", icon: "ri-bank-card-line", path: "/admin/payments" }] : []),
           ...(can(user, "audit.read") ? [{ labelKey: "auditLog", icon: "ri-file-list-3-line", path: "/admin/audit" }] : []),

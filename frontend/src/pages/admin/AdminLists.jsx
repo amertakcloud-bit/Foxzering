@@ -285,7 +285,7 @@ export function AdminSettings() {
           </div>
           <button
             type="submit"
-            className="admin-btn admin-btn-primary"
+            className="primary-btn"
             disabled={busy || !key.trim()}
           >
             <i className="ri-save-3-line" />{" "}
@@ -350,7 +350,7 @@ export function AdminSettings() {
         </div>
         <button
           type="submit"
-          className="admin-btn admin-btn-primary"
+          className="primary-btn"
           disabled={busy}
         >
           <i className="ri-save-3-line" /> Save models

@@ -279,7 +279,7 @@ function ProjectList() {
                       }}
                     />
                     <b style={{
-                      fontFamily: "Kantumruy"
+                      fontFamily: "Kantumruy Bold"
                     }}>{p.name}</b>
                     <span className="tk-hint">
                       {p.width}×{p.height} · {Math.round(p.duration || 0)}s ·{" "}

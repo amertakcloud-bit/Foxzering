@@ -2,6 +2,7 @@ import { useState } from "react";
 import Select from "../../components/ui/Select";
 import { useNavigate } from "react-router-dom";
 import adminService from "../../services/adminService";
+import { code, data } from "motion/react-client";
 
 export default function PromoCodeForm() {
   const [loading, setLoading] = useState(false);
@@ -60,6 +61,28 @@ export default function PromoCodeForm() {
     }
   }
 
+  // Random Promocode
+  const randomCode = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+
+    const code = Array.from(
+      { length: 8 },
+      () => chars[Math.floor(Math.random() * chars.length)],
+    ).join("");
+
+    document.getElementById("code").value = code;
+    document.getElementById("promoForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      const data = new FormData(e.target);
+      const result = {
+        code: data.get("code"),
+      };
+
+      console.log(result);
+    });
+  };
+
   return (
     <div className="admin-dashboard">
       <header className="admin-header">
@@ -71,7 +94,7 @@ export default function PromoCodeForm() {
         </div>
         <div className="admin-header-right">
           <button
-            className="admin-btn admin-btn-secondary"
+            className="primary-btn"
             onClick={() => navigate("/admin/promo-codes", { replace: true })}
           >
             <i className="ri-arrow-left-line" aria-hidden="true"></i>
@@ -82,29 +105,41 @@ export default function PromoCodeForm() {
 
       <main className="admin-content">
         <div className="admin-panel">
-          {error && <div className="auth-alert error" role="alert">{error}</div>}
-          {success && <div className="auth-alert success" role="alert">{success}</div>}
+          {error && (
+            <div className="auth-alert error" role="alert">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="auth-alert success" role="alert">
+              {success}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
-            <div className="admin-form-row">
+            <div className="admin-form-row" id="promoForm">
               <div className="input">
                 <label htmlFor="code">Promo Code</label>
-                <input
-                  id="code"
-                  name="code"
-                  type="text"
-                  placeholder="e.g. WELCOME10"
-                  required
-                />
+                <div className="input-code">
+                  <input
+                    id="code"
+                    name="code"
+                    type="text"
+                    placeholder="e.g. WELCOME10"
+                    required
+                  />
+
+                  <div>
+                    <button className="primary-btn" onClick={randomCode}>
+                      <i className="ri-dice-line"></i>
+                      Random
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="input">
                 <label htmlFor="type">Type</label>
-                <Select
-                  id="type"
-                  name="type"
-                  defaultValue="fixed"
-                  required
-                >
+                <Select id="type" name="type" defaultValue="fixed" required>
                   <option value="fixed">Fixed Amount (e.g. $5 off)</option>
                   <option value="percent">Percentage (e.g. 10% off)</option>
                 </Select>
@@ -151,10 +186,15 @@ export default function PromoCodeForm() {
 
             <button
               type="submit"
-              className="admin-btn admin-btn-primary"
+              className="primary-btn"
               disabled={loading}
             >
-              <i className={loading ? "ri-loader-4-line is-spinning" : "ri-check-line"} aria-hidden="true"></i>
+              <i
+                className={
+                  loading ? "ri-loader-4-line is-spinning" : "ri-check-line"
+                }
+                aria-hidden="true"
+              ></i>
               {loading ? "Creating..." : "Create Promo Code"}
             </button>
           </form>
