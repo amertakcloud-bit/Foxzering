@@ -319,6 +319,10 @@ function App() {
             }
           />
           <Route
+            path="/admin/overview"
+            element={<motion.div {...getPageAnimation(location, prev)} key="admin-overview"><AdminDashboard /></motion.div>}
+          />
+          <Route
             path="/admin/settings"
             element={<motion.div {...getPageAnimation(location, prev)} key="admin-settings"><AdminDashboard /></motion.div>}
           />

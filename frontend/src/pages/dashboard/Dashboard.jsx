@@ -36,7 +36,7 @@ function PillarChart({ data, lang }) {
           </div>
         ))}
       </div>
-      <div className="ud-axis"><span>{data[0]?.date.slice(5)}</span><span>max {max}</span><span>{data.at(-1)?.date.slice(5)}</span></div>
+      <div className="ud-axis"><p>{data[0]?.date.slice(5)}</p><span>max {max}</span><span>{data.at(-1)?.date.slice(5)}</span></div>
     </div>
   );
 }

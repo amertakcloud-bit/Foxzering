@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import Logo from "../../components/Logo";
 
 // Page: Profile
 // Shows the signed-in user's information and allows editing name/avatar + logout.
@@ -74,7 +75,7 @@ function Profile() {
       {/* Account overview */}
       <div className="card glass profile-card">
         {user?.avatar ? (
-          <img className="profile-avatar" src={user.avatar} alt={user.name} />
+          <img className="profile-avatar" src={user.avatar || Logo} alt={user.name} />
         ) : (
           <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">
             {initials}

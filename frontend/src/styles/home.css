@@ -95,7 +95,7 @@
 
 /* Home: features + terms */
 .home-h3 {
-  font-family: Kantumruy, system-ui, sans-serif;
+  font-family: "Kantumruy Bold", system-ui, sans-serif;
   color: var(--primary);
   margin: 28px 0 12px;
 }
@@ -105,7 +105,11 @@
   display: grid;
   gap: 6px;
   color: var(--text-muted);
-  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+  width: 100%;
 }
 .home-list li {
   list-style: disc;

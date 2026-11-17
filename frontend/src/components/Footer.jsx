@@ -11,8 +11,8 @@ const LINKS = [
 ];
 const SOCIAL = [
   { href: "https://t.me/Foxzering_Dev", icon: "ri-telegram-2-line", label: "@Foxzering" },
-  { href: "https://t.me/Foxzering", icon: "ri-telegram-line", label: "Foxzering" },
-  { href: "https://www.tiktok.com/@foxzering_dev", icon: "ri-tiktok-line", label: "@amertak.dev" },
+  { href: "https://t.me/Foxzering", icon: "ri-telegram-line", label: "Foxzering Channel" },
+  { href: "https://www.tiktok.com/@foxzering_dev", icon: "ri-tiktok-line", label: "@foxzering_dev" },
 ];
 
 function Footer() {

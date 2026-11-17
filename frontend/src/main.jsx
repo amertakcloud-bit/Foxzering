@@ -32,28 +32,37 @@ import "./styles/auth.css";
 import "./styles/admin-dashboard.css";
 import "./styles/admin-clean.css";
 import "./styles/slider.css";
+import "./styles/music.css";
 
 // TOOLS
-import './styles/tools/cloudShare.css'
+import "./styles/tools/cloudShare.css";
 import "./styles/tools/tts.css";
 import "./styles/tools/toolkit.css";
 import "./styles/feedback.css";
 import "./styles/skeleton.css";
 import GlobalContextMenu from "./components/ui/ContextMenu";
 
-try { if (localStorage.getItem("reduceMotion") === "1") document.documentElement.setAttribute("data-motion", "reduce"); } catch { /* ignore */ }
+// Audio Player
+// import { AudioProvider } from "./components/AudioContext";
+
+try {
+  if (localStorage.getItem("reduceMotion") === "1")
+    document.documentElement.setAttribute("data-motion", "reduce");
+} catch {
+  /* ignore */
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <LanguageProvider>
-        <AuthProvider>
-          <FeedbackProvider>
-            <App />
-            <GlobalContextMenu />
-          </FeedbackProvider>
-        </AuthProvider>
-      </LanguageProvider>
-    </BrowserRouter>
+      <BrowserRouter>
+        <LanguageProvider>
+          <AuthProvider>
+            <FeedbackProvider>
+              <App />
+              <GlobalContextMenu />
+            </FeedbackProvider>
+          </AuthProvider>
+        </LanguageProvider>
+      </BrowserRouter>
   </React.StrictMode>
 );

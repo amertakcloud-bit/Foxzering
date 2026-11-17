@@ -1,9 +1,11 @@
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
-import Footer from "../components/Footer";
+// import Footer from "../components/Footer";
+const Footer = lazy(() => import("../components/Footer"));
+// import AudioPlayer from "../components/AudioPlayer";
 import { useLanguage } from "../context/LanguageContext";
 import useDocumentTitle from "../hooks/useDocumentTitle";
 
@@ -34,6 +36,7 @@ const pageTitleKeys = {
   "/tools/tts": "TextToSpeech",
   "/tools/qr": "GenerateQr",
   "/auth": "login",
+  "/notification": "notification"
 };
 
 // MainLayout
@@ -134,11 +137,15 @@ function MainLayout() {
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               className="page-content-inner"
             >
+              {/* ---- */}
               <Suspense fallback={<div className="tk-empty" style={{ minHeight: 240 }}><i className="ri-loader-4-line spin" /></div>}>
             <Outlet />
           </Suspense>
             </motion.div>
           </AnimatePresence>
+          
+          {/* MUSIC PLAYER */}
+          {/*<AudioPlayer /> */}
         </main>
 
         {!isEditor && <Footer />}

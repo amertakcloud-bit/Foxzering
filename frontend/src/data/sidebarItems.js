@@ -3,6 +3,8 @@
 // Each item can optionally have "children" to become a dropdown/submenu.
 // labelKey refers to a key inside LanguageContext.jsx translations.
 
+import { label } from "motion/react-client";
+
 const sidebarItems = [
   {
     labelKey: "home",
@@ -18,6 +20,11 @@ const sidebarItems = [
     labelKey: "dashboard",
     icon: "ri-dashboard-line",
     path: "/dashboard",
+  },
+  {
+    labelKey: "Game Topup",
+    icon: "ri-gamepad-line",
+    path: "topup",
   },
   {
     labelKey: "tools",
@@ -45,6 +52,11 @@ const sidebarItems = [
     // Actual target is resolved in Sidebar.jsx:
     // signed in → /profile, guest → /login
     path: "/login",
+  },
+  {
+    labelKey: "notify",
+    icon: "ri-notification-3-line",
+    path: "/notification",
   },
   {
     labelKey: "settings",
