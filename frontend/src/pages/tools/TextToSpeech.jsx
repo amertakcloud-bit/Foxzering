@@ -219,7 +219,7 @@ export default function TextToSpeech() {
           <p className="tts-label" htmlFor="tts-text"><i className="ri-edit-2-line" aria-hidden="true" /> {km ? "បញ្ចូលអត្ថបទ" : "Your text"}</p>
           <textarea id="tts-text" className="tts-text" value={text} maxLength={3000} onChange={(e) => setText(e.target.value)} rows={8} placeholder={km ? "វាយបញ្ចូលអត្ថបទ..." : "Type or paste your text…"} />
           <div className="tts-meta">
-            <div className="tts-quick">
+            <div className="tts-quick" style={{ display: "none"}}>
               {quick.map((q) => <button key={q} type="button" className="tts-chip" onClick={() => setText(q)}>{q.length > 28 ? q.slice(0, 28) + "…" : q}</button>)}
             </div>
             <span className="tts-count">{text.length} / 3000 {t("ttsChars")}</span>

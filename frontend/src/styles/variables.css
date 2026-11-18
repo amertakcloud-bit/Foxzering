@@ -13,6 +13,7 @@
 /* Dark theme (default) */
 [data-theme="dark"] {
   --bg: #0b0b10;
+  --glass: linear-gradient(120deg, #b8b8b814, #0b0b100c, #0b0b101e);
   --grad: linear-gradient(to right, var(--primary-light), var(--primary), var(--primary-light));
   --reflect: linear-gradient(to right, var(--text), var(--text-muted), var(--text));
   --surface: #13131c;

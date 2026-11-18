@@ -91,6 +91,8 @@
   width: 40px;
   height: 40px;
   border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
   border-radius: 10px;
   color: var(--text-muted);
   transition: background var(--transition), color var(--transition);
