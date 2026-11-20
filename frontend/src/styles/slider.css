@@ -1,0 +1,131 @@
+.banner-slider {
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.banner-track {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.banner-track::-webkit-scrollbar {
+  display: none;
+}
+
+.banner-track:active {
+  cursor: grabbing;
+}
+
+.banner-slide {
+  flex: 0 0 calc((100% - 32px) / 3);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+/* Your original banner element */
+
+.banner {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+
+  transition: 0.2s ease;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, #000, transparent 70%);
+
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    -webkit-mask: url("../assets/favicon/banner.svg") center / contain no-repeat;
+    mask: url("../assets/favicon/banner.svg") center / contain no-repeat;
+    pointer-events: none;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+
+  &:hover {
+    scale: 1.05;
+  }
+}
+
+.banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.banner-hover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+
+  i {
+    padding: .5rem;
+    color: var(--bg);
+    background-color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+}
+
+.banner:hover .banner-hover {
+  opacity: 1;
+}
+
+/* Controls */
+
+.slider-controls {
+  display: none; /* hide */
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+
+  span {
+    display: none;
+  }
+}
+
+.slider-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 0 auto;
+}
+
+.slider-buttons button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Mobile */
+
+@media (max-width: 767px) {
+  .banner-track {
+    gap: 12px;
+  }
+
+  .banner-slide {
+    flex: 0 0 100%;
+  }
+}
