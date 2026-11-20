@@ -3,7 +3,7 @@ import ToolShell from "../../components/tools/ToolShell";
 import Dropzone from "../../components/tools/Dropzone";
 import Waveform from "../../components/tools/Waveform";
 import TokenCost from "../../components/tools/TokenCost";
-import { RATES, tokensForBytes } from "../../lib/tokens";
+import { RATES, tokensForBytes, useRates } from "../../lib/tokens";
 import { useAuth } from "../../context/AuthContext";
 import { KeyNotice, useGeminiAccess } from "../../components/tools/GeminiKey";
 import { useLanguage } from "../../context/LanguageContext";
@@ -67,6 +67,7 @@ const CueRow = memo(function CueRow({ cue, index, issues, active, onChange, onPl
 });
 
 export default function Srt() {
+  useRates();
   const { t } = useLanguage();
   const { toast, confirm } = useFeedback();
   const { data: status } = useToolsStatus();

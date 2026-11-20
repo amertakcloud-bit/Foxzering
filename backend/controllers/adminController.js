@@ -1,7 +1,9 @@
 import User from "../models/User.js";
 import { ROLES, isStaff, permsFor } from "../lib/permissions.js";
 import { afterGrant, audit, notify } from "../lib/ledger.js";
-import { geminiAdminStatus, saveAdminGemini, getAdminGeminiKey } from "../lib/settings.js";
+import { RATE_DEFS, getRates, normalizeRates } from "../lib/billing.js";
+import { cloudShareOverview, isCloudShareAvailable } from "../services/cloudShareService.js";
+import { getSetting, setSetting, geminiAdminStatus, saveAdminGemini, getAdminGeminiKey } from "../lib/settings.js";
 import { isValidKeyFormat, mapGeminiError, validateGeminiKey } from "../lib/geminiClient.js";
 import { AppError } from "../lib/AppError.js";
 import AuditLog from "../models/AuditLog.js";
@@ -653,4 +655,78 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
   }
   await audit(req.user._id, "broadcast.send", target === "all" ? "all" : String(req.body.user), { title, sent }, req.ip);
   res.json({ success: true, data: { sent }, message: `Sent to ${sent} user${sent === 1 ? "" : "s"}.` });
+});
+
+
+// ── Token usage management (admin): prices per tool + real usage per tool ──
+// GET /api/admin/token-usage → { defs, rates, usage:[{tool,tokens,count,users}], totals }
+export const getTokenUsage = asyncHandler(async (req, res) => {
+  const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const since = new Date(Date.now() - days * 86400000);
+  const { default: TokenUsage } = await import("../models/TokenUsage.js");
+  const raw = await TokenUsage.aggregate([
+    { $match: { createdAt: { $gte: since } } },
+    { $group: { _id: "$tool", tokens: { $sum: "$tokens" }, count: { $sum: { $cond: [{ $gt: ["$tokens", 0] }, 1, 0] } } } },
+    { $sort: { tokens: -1 } },
+  ]);
+  const usage = raw.map((r) => ({ tool: r._id, tokens: Math.max(0, r.tokens), count: r.count }));
+  res.json({
+    success: true,
+    data: {
+      days,
+      defs: RATE_DEFS,
+      rates: await getRates(),
+      usage,
+      totals: { tokens: usage.reduce((n, u) => n + u.tokens, 0), uses: usage.reduce((n, u) => n + u.count, 0) },
+    },
+  });
+});
+
+// PUT /api/admin/token-rates  { rates: { captionPerMB: 5, … } } — whole numbers only; unknown keys ignored.
+export const putTokenRates = asyncHandler(async (req, res) => {
+  const body = req.body?.rates;
+  if (!body || typeof body !== "object") throw new AppError(400, "INVALID_BODY", '"rates" must be an object.');
+  for (const d of RATE_DEFS) {
+    if (!(d.key in body)) continue;
+    const n = Number(body[d.key]);
+    if (!Number.isFinite(n) || n < d.min || n > d.max || !Number.isInteger(n)) {
+      throw new AppError(400, "INVALID_RATE", `${d.key} must be a whole number between ${d.min} and ${d.max}.`);
+    }
+  }
+  const before = await getRates();
+  const next = normalizeRates({ ...before, ...body });
+  await setSetting("tokenRates", next, req.user._id);
+  await audit(req.user._id, "settings.tokenRates", "tokenRates", { before, after: next }, req.ip);
+  res.json({ success: true, data: { rates: next }, message: "Saved." });
+});
+
+// POST /api/admin/token-rates/reset → back to the built-in prices
+export const resetTokenRates = asyncHandler(async (req, res) => {
+  const next = normalizeRates({});
+  await setSetting("tokenRates", next, req.user._id);
+  await audit(req.user._id, "settings.tokenRates.reset", "tokenRates", {}, req.ip);
+  res.json({ success: true, data: { rates: next }, message: "Reset." });
+});
+
+// GET /api/admin/cloudshare → totals + newest files with owner names (Overview)
+export const adminCloudShare = asyncHandler(async (_req, res) => {
+  if (!isCloudShareAvailable()) return res.json({ success: true, data: { available: false, totalFiles: 0, activeFiles: 0, expiredFiles: 0, totalBytes: 0, downloads: 0, items: [] } });
+  const o = await cloudShareOverview(30);
+  const ids = [...new Set(o.items.map((f) => f.owner).filter(Boolean))];
+  const users = ids.length ? await User.find({ _id: { $in: ids } }).select("name email") : [];
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+  const now = Date.now();
+  res.json({
+    success: true,
+    data: {
+      available: true,
+      ...o,
+      items: o.items.map((f) => ({
+        shareId: f.shareId, title: f.title || "", name: f.originalName, size: f.size, mimeType: f.mimeType,
+        downloadCount: f.downloadCount || 0, createdAt: f.createdAt, expiresAt: f.expiresAt || null,
+        expired: Boolean(f.expiresAt && new Date(f.expiresAt).getTime() <= now),
+        owner: byId.get(String(f.owner)) ? { name: byId.get(String(f.owner)).name, email: byId.get(String(f.owner)).email } : null,
+      })),
+    },
+  });
 });

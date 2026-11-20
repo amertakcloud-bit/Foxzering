@@ -7,6 +7,7 @@ import MainLayout from "./layouts/MainLayout";
 import AdminLayout from "./layouts/AdminLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import GuestRoute from "./components/GuestRoute";
+import LogoLoader from "./components/LogoLoader";
 
 
 // Tools Page
@@ -27,6 +28,8 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const PromoCodeForm = lazy(() => import("./pages/admin/PromoCodeForm"));
 const Tools = lazy(() => import("./pages/Tools"));
 const CloudShare = lazy(() => import("./pages/tools/CloudShare"));
+const ShareView = lazy(() => import("./pages/ShareView"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const AuthPage = lazy(() => import("./pages/auth/Auth"));
 // Heavier tool pages are code-split (they pull in wavesurfer / audio code only when opened).
 const TextToSpeech = lazy(() => import("./pages/tools/TextToSpeech"));
@@ -38,7 +41,7 @@ const Srt = lazy(() => import("./pages/tools/Srt"));
 const VideoEditor = lazy(() => import("./pages/tools/VideoEditor"));
 
 function ToolFallback() {
-  return <div className="tk-empty" style={{ minHeight: 240 }}><i className="ri-loader-4-line spin" /></div>;
+  return <LogoLoader inline />;
 }
 
 // Auth Page
@@ -170,6 +173,18 @@ function App() {
               </motion.div>
             }
           />
+          <Route
+            path="share/:shareId"
+            element={
+              <motion.div {...getPageAnimation(location, prev)} key={`share-${location.pathname}`}>
+                <ShareView />
+              </motion.div>
+            }
+          />
+          <Route
+            path="notification"
+            element={<Navigate to="/notifications" replace />}
+          />
           {TOOL_ROUTES.map(({ path, Component, aliases = [] }) =>
             [path, ...aliases].map((p, i) =>
               i === 0 ? (
@@ -209,6 +224,14 @@ function App() {
               element={
                 <motion.div {...getPageAnimation(location, prev)} key="profile">
                   <Profile />
+                </motion.div>
+              }
+            />
+            <Route
+              path="notifications"
+              element={
+                <motion.div {...getPageAnimation(location, prev)} key="notifications">
+                  <Notifications />
                 </motion.div>
               }
             />
@@ -348,6 +371,10 @@ function App() {
                 <AdminDashboard />
               </motion.div>
             }
+          />
+          <Route
+            path="/admin/token-usage"
+            element={<motion.div {...getPageAnimation(location, prev)} key="admin-token-usage"><AdminDashboard /></motion.div>}
           />
           <Route
             path="/admin/promo-codes/new"

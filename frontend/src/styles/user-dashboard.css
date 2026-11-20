@@ -210,3 +210,17 @@
   gap: 8px;
   margin: 4px 0 8px;
 }
+
+/* admin → token usage */
+.tu-page { display: grid; gap: 16px; }
+.tu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.tu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.tu-row.bad { border-color: #ef4444; }
+.tu-name { display: grid; gap: 2px; min-width: 0; }
+.tu-name small { color: var(--text-muted); font-size: 0.76rem; }
+.tu-input { display: flex; align-items: center; gap: 8px; flex: none; }
+.tu-input input { width: 84px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; text-align: right; }
+.tu-input input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.tu-input em { font-style: normal; font-size: 0.74rem; color: #16a34a; }
+.tu-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.tu-dirty { font-size: 0.8rem; color: #f59e0b; }

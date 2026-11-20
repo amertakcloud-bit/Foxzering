@@ -1,0 +1,12 @@
+/* Logo loader — theme variables only, same look in dark and light. */
+.lg-loader { flex: 1; width: 100%; min-height: 320px; display: grid; place-content: center; justify-items: center; gap: 14px; }
+.lg-loader.is-inline { min-height: 240px; }
+.lg-mark { position: relative; width: 84px; height: 84px; display: grid; place-items: center; }
+.lg-logo { display: grid; place-items: center; animation: lg-pulse 1.6s ease-in-out infinite; }
+.lg-logo svg { width: 52px; height: auto; display: block; }
+.lg-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary); animation: lg-spin 0.9s linear infinite; }
+.lg-label { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+@keyframes lg-spin { to { transform: rotate(360deg); } }
+@keyframes lg-pulse { 0%, 100% { transform: scale(0.94); opacity: 0.75; } 50% { transform: scale(1.04); opacity: 1; } }
+[data-motion="reduce"] .lg-logo, [data-motion="reduce"] .lg-ring { animation-duration: 3s; }
+@media (prefers-reduced-motion: reduce) { .lg-logo { animation: none; } }

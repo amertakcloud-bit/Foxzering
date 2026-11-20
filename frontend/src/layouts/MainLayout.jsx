@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
+import LogoLoader from "../components/LogoLoader";
 // import Footer from "../components/Footer";
 const Footer = lazy(() => import("../components/Footer"));
 // import AudioPlayer from "../components/AudioPlayer";
@@ -28,6 +29,8 @@ const pageTitleKeys = {
   // Tools
   "/tools": "toolsTitle",
   "/tools/cloud": "CloudShareTitle",
+  "/notification": "notifications",
+  "/notifications": "notifications",
   "/tools/downloader": "VideoDownloader",
   "/tools/export-audio": "ExportAudio",
   "/tools/srt": "Srt",
@@ -101,7 +104,7 @@ function MainLayout() {
 
   // trailing slash / unknown paths: normalise, then fall back to "not found"
   const path = location.pathname.replace(/\/+$/, "") || "/";
-  const titleKey = pageTitleKeys[path] || (path.startsWith("/admin") ? "adminDashboard" : "notFound");
+  const titleKey = pageTitleKeys[path] || (path.startsWith("/share/") ? "CloudShareTitle" : null) || (path.startsWith("/admin") ? "adminDashboard" : "notFound");
   const pageTitle = t(titleKey);
   // The video editor is a full-screen workspace: no footer, no sidebar, no page padding.
   const isEditor = /^\/tools\/video-editor\/[^/]+/.test(path);
@@ -127,6 +130,8 @@ function MainLayout() {
           />
         )}
 
+        {/* One boundary for page + footer: both are downloaded lazily and appear together, with the logo loader meanwhile. */}
+        <Suspense fallback={<div className="page-content app-loading"><LogoLoader label={t("loadingPage")} /></div>}>
         <main className="page-content">
           <AnimatePresence mode="wait">
             <motion.div
@@ -138,9 +143,7 @@ function MainLayout() {
               className="page-content-inner"
             >
               {/* ---- */}
-              <Suspense fallback={<div className="tk-empty" style={{ minHeight: 240 }}><i className="ri-loader-4-line spin" /></div>}>
-            <Outlet />
-          </Suspense>
+              <Outlet />
             </motion.div>
           </AnimatePresence>
           
@@ -149,6 +152,7 @@ function MainLayout() {
         </main>
 
         {!isEditor && <Footer />}
+        </Suspense>
       </div>
     </div>
   );

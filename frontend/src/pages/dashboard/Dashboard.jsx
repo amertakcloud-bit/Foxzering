@@ -5,6 +5,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/api";
+import MyCloudFiles from "../../components/tools/MyCloudFiles";
 import "../../styles/user-dashboard.css";
 
 const TOOL_LABEL = {
@@ -140,6 +141,8 @@ function Dashboard() {
           </ul>
         </section>
       </div>
+
+      <MyCloudFiles />
 
       <section className="tk-card ud-card">
         <h3>{L("Recent activity", "សកម្មភាពថ្មីៗ")}</h3>

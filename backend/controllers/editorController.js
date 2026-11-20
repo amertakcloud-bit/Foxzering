@@ -1,7 +1,7 @@
 import { AppError } from "../lib/AppError.js";
 import { asyncHandler } from "../middleware/errorMiddleware.js";
 import { deps as geminiDeps, extractText, getModels, mapGeminiError, parseModelJson } from "../lib/geminiClient.js";
-import { RATES, refundJob, startJob, tokensForChars, withCharge } from "../lib/billing.js";
+import { RATES, getRates, refundJob, startJob, tokensForChars, withCharge } from "../lib/billing.js";
 import { planEdits } from "../services/editorAi.js";
 import { createProject, deleteProject, getProject, listProjects, updateProject } from "../services/editorProjects.js";
 
@@ -77,12 +77,13 @@ export const AI_EDIT_COST = 1; // tokens per AI instruction (refunded automatica
 
 // POST /api/editor/ai  { instruction, project: { width,height,duration,playhead,selected,clips[] } }
 export const aiEdit = asyncHandler(async (req, res) => {
+  const aiCost = (await getRates()).aiEditPerUse;
   const { result, balance } = await withCharge(
-    req.user._id, AI_EDIT_COST,
+    req.user._id, aiCost,
     () => planEdits({ apiKey: req.gemini.key, instruction: req.body?.instruction, project: req.body?.project }),
     "aiedit"
   );
-  res.json({ success: true, data: { ...result, cost: AI_EDIT_COST, tokens: balance, keySource: req.gemini.source } });
+  res.json({ success: true, data: { ...result, cost: aiCost, tokens: balance, keySource: req.gemini.source } });
 });
 
 // ── Voice (Gemini TTS) for the Video Editor: 1 token per 200 characters, charged when the job starts ──
@@ -92,8 +93,9 @@ export const voiceStart = asyncHandler(async (req, res) => {
   if (!Number.isFinite(chars) || chars <= 0 || chars > MAX_VOICE_CHARS) {
     throw new AppError(400, "INVALID_CHARS", `"chars" must be between 1 and ${MAX_VOICE_CHARS}.`);
   }
-  const cost = tokensForChars(chars);
-  const job = await startJob(req.user._id, "voice", cost, { budget: cost * RATES.voiceCharsPerToken });
+  const perToken = (await getRates()).voiceCharsPerToken;
+  const cost = tokensForChars(chars, perToken);
+  const job = await startJob(req.user._id, "voice", cost, { budget: cost * perToken });
   res.json({ success: true, data: { job: job.token, cost: job.cost, tokens: job.balance } });
 });
 export const voiceRefund = asyncHandler(async (req, res) => {

@@ -40,8 +40,14 @@ function Wave({ clip, zoom, getBlob }) {
 
 // Timeline: ruler + collapsible lanes (each lane grows a new row when clips overlap) + draggable/trimmable
 // clips + playhead. Pointer events → works with touch.
-export default function Timeline({ project, time, zoom, selected, group = [], onGroup, onMenu, selectMode = false, onSelect, onSeek, onPreview, onCommit, getBlob, t }) {
+// fixedHead (phones, like CapCut): the red playhead line stays in the middle of the view and the TIMELINE scrolls under it;
+// scrolling = seeking. A clip can only be moved/trimmed after it was selected by tapping it. Desktop is unchanged.
+export default function Timeline({ project, time, zoom, selected, group = [], onGroup, onMenu, selectMode = false, fixedHead = false, onSelect, onSeek, onPreview, onCommit, getBlob, t }) {
   const scroller = useRef(null);
+  const [vw, setVw] = useState(0); // visible width (fixedHead only)
+  const timeRef = useRef(time);
+  timeRef.current = time;
+  const ORIGIN = fixedHead ? Math.round(vw / 2) : LABEL_W; // x (px) of time 0 inside the scrolling content
   const drag = useRef(null);
   const [marquee, setMarquee] = useState(null); // { x0, y0, x1, y1 } in timeline content pixels
   const press = useRef(0); // long-press timer (touch = right click)
@@ -49,23 +55,51 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
   const [collapsed, setCollapsed] = useState({});
   const dur = Math.max(projectDuration(project) + 10, 30);
   const width = Math.ceil(dur * zoom);
+  const innerW = fixedHead ? width + vw : width + LABEL_W;
   const { track, rows } = assignTracks(project.clips);
   const laneH = (id) => (collapsed[id] ? COLLAPSED_H : rows[id] * ROW_H);
   let acc = RULER_H;
   const tops = LANES.map((l) => { const y = acc; acc += laneH(l.id); return y; });
   const totalH = acc;
 
+  // measure the visible width (fixedHead)
+  useEffect(() => {
+    const el = scroller.current;
+    if (!fixedHead || !el) return undefined;
+    const set = () => setVw(el.clientWidth);
+    set();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fixedHead]);
+
   // keep the playhead visible while playing
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    if (fixedHead) {
+      // the content follows the time: playhead stays in the middle. Skip when the user's own scroll already put us there.
+      const target = time * zoom;
+      if (vw && Math.abs(el.scrollLeft - target) > 1) el.scrollLeft = target;
+      return;
+    }
     const x = LABEL_W + time * zoom;
     if (x < el.scrollLeft + LABEL_W || x > el.scrollLeft + el.clientWidth - 30) el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
-  }, [time, zoom]);
+  }, [time, zoom, fixedHead, vw]);
+
+  // fixedHead: swiping the timeline moves the time
+  const onScroll = () => {
+    if (!fixedHead || !vw) return;
+    const el = scroller.current;
+    const want = Math.max(0, el.scrollLeft / zoom);
+    if (Math.abs(want - timeRef.current) * zoom <= 1) return; // that's our own programmatic scroll
+    onSeek(want);
+  };
 
   const timeFromEvent = (e) => {
     const r = scroller.current.getBoundingClientRect();
-    return Math.max(0, (e.clientX - r.left + scroller.current.scrollLeft - LABEL_W) / zoom);
+    return Math.max(0, (e.clientX - r.left + scroller.current.scrollLeft - ORIGIN) / zoom);
   };
 
   const contentPos = (e) => {
@@ -85,6 +119,7 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
       return;
     }
     onSelect(null);
+    if (fixedHead) return; // phones: swipe to scroll the timeline (that seeks), a tap only deselects
     onSeek(timeFromEvent(e));
     drag.current = { mode: "scrub" };
     attach();
@@ -101,6 +136,8 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
       return;
     }
     const keep = inGroup(clip.id) && group.length > 1;
+    // phones: the first tap only selects the clip (swiping over it keeps scrolling the timeline); it moves after it is selected
+    if (fixedHead && !inGroup(clip.id)) { onSelect(clip.id); return; }
     if (!keep) onSelect(clip.id);
     const ids = keep ? group : [clip.id];
     if (touch && mode === "move") { // long press = the right-click menu
@@ -125,7 +162,7 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
         const p = contentPos(e);
         setMarquee({ x0: d.x0, y0: d.y0, x1: p.x, y1: p.y });
         const lanes = LANES.filter((l, i) => tops[i] < Math.max(d.y0, p.y) && tops[i] + laneH(l.id) > Math.min(d.y0, p.y)).map((l) => l.id);
-        const ids = clipsInRange(project, (d.x0 - LABEL_W) / zoom, (p.x - LABEL_W) / zoom, lanes);
+        const ids = clipsInRange(project, (d.x0 - ORIGIN) / zoom, (p.x - ORIGIN) / zoom, lanes);
         onGroup(d.additive ? [...new Set([...d.base, ...ids])] : ids);
         return;
       }
@@ -151,7 +188,7 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
       window.removeEventListener("pointercancel", up);
       if (d?.mode === "marquee") {
         setMarquee(null);
-        if (!d.moved) { onSelect(null); onSeek(Math.max(0, (d.x0 - LABEL_W) / zoom)); } // a click on empty space
+        if (!d.moved) { onSelect(null); if (!fixedHead) onSeek(Math.max(0, (d.x0 - ORIGIN) / zoom)); } // a click on empty space
         return;
       }
       if (d && d.mode !== "scrub" && d.moved && !d.orig?.locked) onCommit();
@@ -165,12 +202,12 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
   const step = zoom >= 120 ? 1 : zoom >= 50 ? 5 : zoom >= 25 ? 10 : 30;
   for (let s = 0; s <= dur; s += step) ticks.push(s);
 
-  return (
-    <div className="ve-timeline" ref={scroller} role="application" aria-label={t("veTimeline")}>
-      <div className="ve-tl-inner" style={{ width: width + LABEL_W, height: totalH }}>
-        <div className="ve-ruler" onPointerDown={startScrub} style={{ paddingLeft: LABEL_W }}>
+  const body = (
+    <div className={"ve-timeline" + (fixedHead ? " is-fixedhead" : "")} ref={scroller} onScroll={onScroll} role="application" aria-label={t("veTimeline")}>
+      <div className="ve-tl-inner" style={{ width: innerW, height: totalH }}>
+        <div className="ve-ruler" onPointerDown={startScrub} style={{ paddingLeft: ORIGIN }}>
           {ticks.map((s) => (
-            <span key={s} className="ve-tick" style={{ left: LABEL_W + s * zoom }}>{fmt(s)}</span>
+            <span key={s} className="ve-tick" style={{ left: ORIGIN + s * zoom }}>{fmt(s)}</span>
           ))}
         </div>
 
@@ -195,7 +232,7 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
                   <div
                     key={c.id}
                     className={`ve-clip ve-${c.type}${selected === c.id ? " is-sel" : group.includes(c.id) ? " is-multi" : ""}${c.locked ? " is-locked" : ""}${showWave ? " has-wave" : ""}`}
-                    style={{ left: LABEL_W + c.start * zoom, width: Math.max(6, c.dur * zoom), top: isCollapsed ? 3 : (track.get(c.id) || 0) * ROW_H + 4, height: isCollapsed ? COLLAPSED_H - 6 : ROW_H - 8 }}
+                    style={{ left: ORIGIN + c.start * zoom, width: Math.max(6, c.dur * zoom), top: isCollapsed ? 3 : (track.get(c.id) || 0) * ROW_H + 4, height: isCollapsed ? COLLAPSED_H - 6 : ROW_H - 8 }}
                     onPointerDown={(e) => startClip(e, c, "move")}
                     onContextMenu={(e) => { if (!onMenu) return; e.preventDefault(); e.stopPropagation(); if (!inGroup(c.id)) onSelect(c.id); onMenu({ x: e.clientX, y: e.clientY, clip: c }); }}
                     title={label}
@@ -214,8 +251,17 @@ export default function Timeline({ project, time, zoom, selected, group = [], on
 
         {marquee && <div className="ve-marquee" style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }} />}
 
-        <div className="ve-playhead" style={{ left: LABEL_W + time * zoom }} aria-hidden="true"><i /></div>
+        {!fixedHead && <div className="ve-playhead" style={{ left: LABEL_W + time * zoom }} aria-hidden="true"><i /></div>}
       </div>
+    </div>
+  );
+
+  if (!fixedHead) return body;
+  // the line does not move: it lives outside the scrolling area
+  return (
+    <div className="ve-tl-wrap">
+      {body}
+      <div className="ve-playhead ve-playhead-fixed" aria-hidden="true"><i /></div>
     </div>
   );
 }

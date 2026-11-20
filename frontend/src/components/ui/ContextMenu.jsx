@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../context/LanguageContext";
+import { CTX_EVENT, isContextMenuEnabled, isEditorPath } from "../../lib/contextMenuPref";
 import "../../styles/context-menu.css";
 
 // A themed menu opened at a pointer position. items: [{ icon, label, onClick, disabled, danger, hint }] — { sep: true } is a divider.
@@ -79,6 +80,8 @@ export default function GlobalContextMenu() {
   useEffect(() => {
     const onMenu = (e) => {
       if (e.defaultPrevented || e.target.closest?.("[data-native-menu]")) return;
+      // Turned off in Settings → the browser's own menu (except in the video editor).
+      if (!isContextMenuEnabled() && !isEditorPath()) return;
       const target = e.target.nodeType === 1 ? e.target : e.target.parentElement;
       if (!target) return;
       e.preventDefault();
@@ -117,8 +120,10 @@ export default function GlobalContextMenu() {
       }
       setMenu({ x: e.clientX, y: e.clientY, items });
     };
+    const onPref = (e) => { if (e.detail === false) setMenu(null); };
     document.addEventListener("contextmenu", onMenu);
-    return () => document.removeEventListener("contextmenu", onMenu);
+    window.addEventListener(CTX_EVENT, onPref);
+    return () => { document.removeEventListener("contextmenu", onMenu); window.removeEventListener(CTX_EVENT, onPref); };
   }, [t]);
 
   return menu ? <MenuView menu={menu} onClose={close} /> : null;

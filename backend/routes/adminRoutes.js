@@ -25,6 +25,10 @@ import {
   activatePromoCode,
   deactivatePromoCode,
   usePromoCode,
+  getTokenUsage,
+  putTokenRates,
+  resetTokenRates,
+  adminCloudShare,
 } from "../controllers/adminController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { protectAdmin } from "../middleware/adminAuthMiddleware.js";
@@ -66,6 +70,10 @@ adminProtectedRouter.post("/users/:userId/ban", requirePerm("users.ban"), setBan
 adminProtectedRouter.get("/audit", requirePerm("audit.read"), listAudit);
 adminProtectedRouter.get("/payments", requirePerm("payments.read"), listPayments);
 adminProtectedRouter.get("/stats", requirePerm("stats.read"), adminStats);
+adminProtectedRouter.get("/token-usage", admin, getTokenUsage);
+adminProtectedRouter.put("/token-rates", admin, putTokenRates);
+adminProtectedRouter.post("/token-rates/reset", admin, resetTokenRates);
+adminProtectedRouter.get("/cloudshare", requirePerm("stats.read"), adminCloudShare);
 adminProtectedRouter.get("/settings/gemini", admin, getGeminiSetting);
 adminProtectedRouter.put("/settings/gemini", admin, putGeminiSetting);
 adminProtectedRouter.delete("/settings/gemini", admin, deleteGeminiSetting);

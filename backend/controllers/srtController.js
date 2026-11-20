@@ -7,7 +7,7 @@ import {
   mapGeminiError,
 } from "../lib/geminiClient.js";
 import { getAdminGeminiKey } from "../lib/settings.js";
-import { RATES, refundJob, startJob, tokensForBytes, verifyJob } from "../lib/billing.js";
+import { RATES, getRates, refundJob, startJob, tokensForBytes, verifyJob } from "../lib/billing.js";
 import { asyncHandler } from "../middleware/errorMiddleware.js";
 import { MAX_CHUNK_SECONDS, transcribeChunk } from "../services/srt/chunk.js";
 import { alignTextToWords, buildCues, cleanWords, cuesFromSegments, DEFAULTS, sanitizeSettings } from "../services/srt/subtitles.js";
@@ -27,7 +27,7 @@ export const getStatus = asyncHandler(async (req, res) => {
       loggedIn: Boolean(req.user),
       chunk: { targetSeconds: 90, maxSeconds: MAX_CHUNK_SECONDS, sampleRate: 16000 },
       defaults: DEFAULTS,
-      rates: { captionPerMB: RATES.captionPerMB },
+      rates: { captionPerMB: (await getRates()).captionPerMB },
     },
   });
 });
@@ -54,7 +54,7 @@ export const startJobHandler = asyncHandler(async (req, res) => {
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > 4 * 1024 * 1024 * 1024) {
     throw new AppError(400, "INVALID_SIZE", '"sizeBytes" must be the size of the file in bytes.');
   }
-  const cost = tokensForBytes(sizeBytes, RATES.captionPerMB);
+  const cost = tokensForBytes(sizeBytes, (await getRates()).captionPerMB);
   const job = await startJob(req.user._id, "caption", cost);
   res.json({ success: true, data: { job: job.token, cost: job.cost, tokens: job.balance } });
 });

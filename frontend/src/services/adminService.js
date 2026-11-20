@@ -25,6 +25,10 @@ const adminService = {
   saveGeminiSetting: (body) => api.put("/admin/settings/gemini", body),
   deleteGeminiSetting: () => api.delete("/admin/settings/gemini"),
   testGeminiSetting: () => api.post("/admin/settings/gemini/test"),
+  getTokenUsage: (days = 30) => api.get("/admin/token-usage", { days }),
+  saveTokenRates: (rates) => api.put("/admin/token-rates", { rates }),
+  resetTokenRates: () => api.post("/admin/token-rates/reset"),
+  getCloudShare: () => api.get("/admin/cloudshare"),
   broadcast: (body) => api.post("/admin/broadcast", body),
 
   // message //Test Message to Users

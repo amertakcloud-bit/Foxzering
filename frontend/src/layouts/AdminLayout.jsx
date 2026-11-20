@@ -1,11 +1,12 @@
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { isStaff } from "../lib/permissions";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
-import Footer from "../components/Footer";
+import LogoLoader from "../components/LogoLoader";
+const Footer = lazy(() => import("../components/Footer"));
 
 function AdminLayout() {
   const { user, loading: authLoading } = useAuth();
@@ -58,6 +59,8 @@ function AdminLayout() {
 
   const title = location.pathname.startsWith("/admin/promo-codes")
     ? t("promoCodes")
+    : location.pathname.startsWith("/admin/token-usage")
+    ? t("adminTokenUsage")
     : t("adminDashboard");
 
   return (
@@ -85,13 +88,12 @@ function AdminLayout() {
           </button>
         </div>
 
-        <main className="page-content">
-          <Suspense fallback={<div className="tk-empty" style={{ minHeight: 240 }}><i className="ri-loader-4-line spin" /></div>}>
+        <Suspense fallback={<div className="page-content app-loading"><LogoLoader label={t("loadingPage")} /></div>}>
+          <main className="page-content">
             <Outlet />
-          </Suspense>
-        </main>
-
-        <Footer />
+          </main>
+          <Footer />
+        </Suspense>
       </div>
     </div>
   );

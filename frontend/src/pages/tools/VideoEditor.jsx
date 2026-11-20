@@ -20,7 +20,7 @@ import CaptionStyle from "../../components/editor/CaptionStyle";
 import AiPanel from "../../components/editor/AiPanel";
 import { friendlyError } from "../../lib/errors";
 import { formatBytes, saveBlob as download } from "../../lib/download";
-import { RATES, tokensForBytes } from "../../lib/tokens";
+import { RATES, tokensForBytes, useRates } from "../../lib/tokens";
 import { Engine } from "../../lib/editor/engine";
 import {
   deleteMedia,
@@ -134,6 +134,7 @@ function useFit(ref, ratio) {
 }
 
 export default function VideoEditor() {
+  useRates();
   const { id } = useParams();
   return id ? <Workspace key={id} id={id} /> : <ProjectList />;
 }
@@ -339,6 +340,40 @@ function Workspace({ id }) {
   const [aiHistory, setAiHistory] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
   const narrow = useNarrow();
+  // Phone bottom sheet: drag the handle down to close, up to open fully, tap to close.
+  const sheetEl = useRef(null);
+  const [sheetFull, setSheetFull] = useState(false);
+  useEffect(() => { if (!sheet) setSheetFull(false); }, [sheet]);
+  const sheetDrag = useRef(null);
+  const sheetHandle = {
+    onPointerDown: (e) => {
+      if (e.button > 0) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      sheetDrag.current = { y0: e.clientY, dy: 0, t0: performance.now() };
+      if (sheetEl.current) sheetEl.current.style.transition = "none";
+    },
+    onPointerMove: (e) => {
+      const d = sheetDrag.current;
+      if (!d || !sheetEl.current) return;
+      d.dy = e.clientY - d.y0;
+      sheetEl.current.style.transform = `translateY(${Math.max(-40, d.dy)}px)`;
+    },
+    onPointerUp: () => {
+      const d = sheetDrag.current;
+      sheetDrag.current = null;
+      if (sheetEl.current) { sheetEl.current.style.transition = ""; sheetEl.current.style.transform = ""; }
+      if (!d) return;
+      const fast = Math.abs(d.dy) / Math.max(1, performance.now() - d.t0) > 0.6;
+      if (Math.abs(d.dy) < 6) setSheet(false); // tap
+      else if (d.dy > 70 || (fast && d.dy > 20)) { if (sheetFull) setSheetFull(false); else setSheet(false); }
+      else if (d.dy < -50 || (fast && d.dy < -20)) setSheetFull(true);
+    },
+    onPointerCancel: () => {
+      sheetDrag.current = null;
+      if (sheetEl.current) { sheetEl.current.style.transition = ""; sheetEl.current.style.transform = ""; }
+    },
+    onKeyDown: (e) => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") { e.preventDefault(); setSheet(false); } },
+  };
   const stage = useRef(null);
   const fit = useFit(stage, project.width / project.height);
   const [missing, setMissing] = useState([]);
@@ -1700,18 +1735,19 @@ function Workspace({ id }) {
         <div className="ve-sheet-bg" onClick={() => setSheet(false)} />
       )}
       <div className="ve-main">
-        <aside className={`ve-left ${sheet ? "open" : ""}`}>
+        <aside ref={sheetEl} className={`ve-left ${sheet ? "open" : ""}${sheetFull ? " full" : ""}`}>
           {!narrow && railNav}
           <div className="ve-panel">
             {narrow && (
-              <button
-                type="button"
+              <div
                 className="ve-sheet-x"
-                onClick={() => setSheet(false)}
+                role="button"
+                tabIndex={0}
                 aria-label={t("veClose")}
+                {...sheetHandle}
               >
-                <i className="ri-arrow-down-s-line" />
-              </button>
+                <span className="hidden" />
+              </div>
             )}
             {activeTab === "sticker" && (
               <div className="ve-stickers">
@@ -2254,6 +2290,7 @@ function Workspace({ id }) {
           onGroup={onGroup}
           onMenu={openClipMenu}
           selectMode={selectMode}
+          fixedHead={narrow}
           t={t}
           onSelect={setSelected}
           onSeek={(s) => engine.current?.seek(s)}

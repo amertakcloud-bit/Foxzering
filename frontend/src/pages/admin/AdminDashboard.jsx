@@ -6,6 +6,8 @@ import { useLanguage } from "../../context/LanguageContext";
 import UsersListView from "./UsersListView";
 import UserDetailPanel from "./UserDetailPanel";
 import PromoCodes from "./PromoCodes";
+import AdminCloud from "./AdminCloud";
+import TokenUsage from "./TokenUsage";
 import { AdminAudit, AdminBroadcast, AdminPayments, AdminSettings, AdminStats } from "./AdminLists";
 import { can, isStaff } from "../../lib/permissions";
 
@@ -26,7 +28,7 @@ export default function AdminDashboard() {
 
   // Tab follows the URL: /admin/dashboard → Users, /admin/promo-codes → Promo Codes
   const path = location.pathname;
-  const activeTab = path.startsWith("/admin/promo-codes") ? "promo" : path.startsWith("/admin/payments") ? "payments" : path.startsWith("/admin/audit") ? "audit" : path.startsWith("/admin/settings") ? "settings" : path.startsWith("/admin/broadcast") ? "broadcast" : "users";
+  const activeTab = path.startsWith("/admin/promo-codes") ? "promo" : path.startsWith("/admin/token-usage") ? "tokens" : path.startsWith("/admin/payments") ? "payments" : path.startsWith("/admin/audit") ? "audit" : path.startsWith("/admin/settings") ? "settings" : path.startsWith("/admin/broadcast") ? "broadcast" : "users";
 
   const normalizedUser = user && {
     ...user,
@@ -87,6 +89,11 @@ export default function AdminDashboard() {
           </button>
         )}
         {can(normalizedUser, "*") && (
+          <button className={`admin-tab ${activeTab === "tokens" ? "active" : ""}`} onClick={() => navigate("/admin/token-usage")}>
+            <i className="ri-coin-line" aria-hidden="true"></i> {t("adminTokenUsage")}
+          </button>
+        )}
+        {can(normalizedUser, "*") && (
           <button className={`admin-tab ${activeTab === "promo" ? "active" : ""}`} onClick={() => { setError(""); navigate("/admin/promo-codes"); }}>
             <i className="ri-ticket-price-line" aria-hidden="true"></i> Promo Codes
           </button>
@@ -96,8 +103,11 @@ export default function AdminDashboard() {
       {error && <div className="auth-alert error" role="alert">{error}</div>}
 
       {activeTab === "users" && !selectedUserId && can(normalizedUser, "stats.read") && <AdminStats />}
+      {activeTab === "users" && !selectedUserId && can(normalizedUser, "stats.read") && <AdminCloud />}
 
-      {activeTab === "promo" ? (
+      {activeTab === "tokens" ? (
+        can(normalizedUser, "*") ? <TokenUsage /> : null
+      ) : activeTab === "promo" ? (
         can(normalizedUser, "*") ? <PromoCodes /> : null
       ) : activeTab === "settings" ? (
         can(normalizedUser, "*") ? <AdminSettings /> : null

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useFeedback } from "../components/ui/Feedback";
 import GeminiKeyPanel, { useGeminiAccess } from "../components/tools/GeminiKey";
 import useToolsStatus from "../hooks/useToolsStatus";
+import { CTX_KEY, isContextMenuEnabled, setContextMenuEnabled } from "../lib/contextMenuPref";
 import "../styles/settings.css";
 
 const read = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -18,6 +19,7 @@ function Settings() {
   const { data: toolsStatus } = useToolsStatus();
   const access = useGeminiAccess(toolsStatus);
   const [theme, setThemeState] = useState(() => (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark"));
+  const [ctxOn, setCtxOn] = useState(isContextMenuEnabled);
   const [reduce, setReduce] = useState(() => read("reduceMotion", "0") === "1");
 
   useEffect(() => {
@@ -28,8 +30,8 @@ function Settings() {
   const setTheme = (v) => { setThemeState(v); window.dispatchEvent(new CustomEvent("amertak:theme", { detail: v })); };
   const setLang = (v) => { if (v !== language) toggleLanguage(); };
   const reset = () => {
-    try { ["theme", "reduceMotion"].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
-    setReduce(false); setTheme("dark"); if (language !== "en") toggleLanguage();
+    try { ["theme", "reduceMotion", CTX_KEY].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+    setReduce(false); setCtxOn(true); setContextMenuEnabled(true); setTheme("dark"); if (language !== "en") toggleLanguage();
     toast.success(t("settingsDone"));
   };
   const seg = (items, value, onPick, label) => (
@@ -61,6 +63,10 @@ function Settings() {
           <div className="st-row">
             <div><b>{t("settingsReduce")}</b><span>{t("settingsReduceHint")}</span></div>
             <button type="button" role="switch" aria-checked={reduce} aria-label={t("settingsReduce")} className={`st-switch ${reduce ? "on" : ""}`} onClick={() => setReduce((v) => !v)}><i /></button>
+          </div>
+          <div className="st-row">
+            <div><b>{t("settingsContextMenu")}</b><span>{t("settingsContextMenuHint")}</span></div>
+            <button type="button" role="switch" aria-checked={ctxOn} aria-label={t("settingsContextMenu")} className={`st-switch ${ctxOn ? "on" : ""}`} onClick={() => { const v = !ctxOn; setCtxOn(v); setContextMenuEnabled(v); }}><i /></button>
           </div>
         </section>
 

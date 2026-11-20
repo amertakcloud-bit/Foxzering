@@ -9,15 +9,66 @@ export const RATES = Object.freeze({
   voiceCharsPerToken: 200, // Video Editor voice (Gemini TTS): 1 token per 200 characters
 });
 
-// ceil(bytes × perMB / 1 MiB), at least 1. bytes × perMB is an integer and 1 MiB is a
-// power of two, so the division is exact — no floating-point surprises (10.6 → 11, 5.09 → 6).
+// ceil(bytes × perMB / 1 MiB), at least 1 (0 when the admin made the tool free). bytes × perMB is an integer and
+// 1 MiB is a power of two, so the division is exact — no floating-point surprises (10.6 → 11, 5.09 → 6).
 export function tokensForBytes(bytes, perMB) {
+  if (!(Number(perMB) > 0)) return 0;
   const b = Math.max(0, Math.floor(Number(bytes) || 0));
   return Math.max(1, Math.ceil((b * perMB) / 1048576));
 }
 
-// ceil(chars / 200), at least 1.
-export const tokensForChars = (chars) => Math.max(1, Math.ceil(Math.max(0, Math.floor(Number(chars) || 0)) / RATES.voiceCharsPerToken));
+// ceil(chars / charsPerToken), at least 1.
+export const tokensForChars = (chars, perToken = RATES.voiceCharsPerToken) =>
+  Math.max(1, Math.ceil(Math.max(0, Math.floor(Number(chars) || 0)) / Math.max(1, Number(perToken) || RATES.voiceCharsPerToken)));
+
+// ── Admin-editable prices ──
+// RATE_DEFS is the single list of every price the admin can change (Admin → Token usage).
+// `key` is stored in Setting "tokenRates"; `def` is the built-in default. Flat "PerUse" prices default to 0 (free).
+export const RATE_DEFS = Object.freeze([
+  { key: "captionPerMB", tool: "caption", unit: "perMB", def: RATES.captionPerMB, min: 0, max: 1000 },
+  { key: "cloudSharePerMB", tool: "cloudshare", unit: "perMB", def: RATES.cloudSharePerMB, min: 0, max: 1000 },
+  { key: "voiceCharsPerToken", tool: "voice", unit: "charsPerToken", def: RATES.voiceCharsPerToken, min: 1, max: 100000 },
+  { key: "aiEditPerUse", tool: "aiedit", unit: "perUse", def: 1, min: 0, max: 1000 },
+  { key: "qrPerUse", tool: "qr", unit: "perUse", def: 0, min: 0, max: 1000 },
+  { key: "imagePromptPerUse", tool: "imageprompt", unit: "perUse", def: 0, min: 0, max: 1000 },
+  { key: "downloaderPerUse", tool: "downloader", unit: "perUse", def: 0, min: 0, max: 1000 },
+  { key: "audioExportPerUse", tool: "audioexport", unit: "perUse", def: 0, min: 0, max: 1000 },
+  { key: "ttsPerUse", tool: "tts", unit: "perUse", def: 0, min: 0, max: 1000 },
+]);
+
+// Keeps only known keys, whole numbers inside the allowed range; everything else falls back to the default.
+export function normalizeRates(input = {}) {
+  const out = {};
+  for (const d of RATE_DEFS) {
+    const n = Number(input?.[d.key]);
+    out[d.key] = Number.isFinite(n) && input?.[d.key] !== "" && input?.[d.key] !== null ? Math.min(d.max, Math.max(d.min, Math.round(n))) : d.def;
+  }
+  return out;
+}
+
+export const rateDeps = { read: async () => (await import("./settings.js")).getSetting("tokenRates") };
+export async function getRates() {
+  let saved = null;
+  try { saved = await rateDeps.read(); } catch { /* no database → defaults */ }
+  return normalizeRates(saved || {});
+}
+
+// Express middleware: charges the admin-set flat price of a (normally free) tool. Price 0 = free, nothing happens.
+// A price > 0 needs a logged-in user; the tokens are refunded when the request fails.
+export const chargeFlat = (key, tool, { skip } = {}) => async (req, res, next) => {
+  try {
+    if (skip?.(req)) return next();
+    const cost = (await getRates())[key] || 0;
+    if (!cost) return next();
+    if (!req.user) throw new AppError(401, "LOGIN_REQUIRED", `Log in to use this tool (${cost} token${cost === 1 ? "" : "s"} per use).`);
+    await chargeTokens(req.user._id, cost, tool);
+    let settled = false;
+    const refund = () => { if (!settled) { settled = true; refundTokens(req.user._id, cost, tool).catch(() => {}); } };
+    res.on("finish", () => { if (res.statusCode >= 400) refund(); else settled = true; });
+    res.on("close", () => { if (!res.writableFinished) refund(); });
+    next();
+  } catch (e) { next(e); }
+};
 
 // Models are imported lazily so unit tests that never touch the database don't need mongoose.
 const User = { findOneAndUpdate: async (...a) => (await import("../models/User.js")).default.findOneAndUpdate(...a), findById: async (...a) => (await import("../models/User.js")).default.findById(...a), updateOne: async (...a) => (await import("../models/User.js")).default.updateOne(...a) };

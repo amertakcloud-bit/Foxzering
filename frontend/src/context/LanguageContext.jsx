@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { en as toolsEn, km as toolsKm } from "../i18n/toolsText";
 import { en as moreEn, km as moreKm } from "../i18n/moreText";
 import { en as homeEn, km as homeKm } from "../i18n/homeText";
+import { en as featEn, km as featKm } from "../i18n/featuresText";
 
 // Language
 // All the text strings the app uses, in English and Khmer.
@@ -303,6 +304,8 @@ translations.en = { ...translations.en, ...moreEn };
 translations.km = { ...translations.km, ...moreKm };
 translations.en = { ...translations.en, ...homeEn };
 translations.km = { ...translations.km, ...homeKm };
+translations.en = { ...translations.en, ...featEn };
+translations.km = { ...translations.km, ...featKm };
 
 const LanguageContext = createContext(null);
 

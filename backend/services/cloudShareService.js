@@ -48,6 +48,8 @@ export async function getCloudModel() {
       {
         shareId: { type: String, required: true, unique: true, index: true },
         originalName: { type: String, required: true },
+        title: { type: String, default: "" },
+        owner: { type: String, default: "", index: true },
         mimeType: { type: String, default: "application/octet-stream" },
         size: { type: Number, required: true },
         data: { type: Buffer, required: true, select: false },
@@ -115,12 +117,38 @@ function getExpiresAt(expiresIn) {
   return d === null ? null : new Date(Date.now() + d);
 }
 
-export async function createCloudShareRecord({ originalName, mimeType, buffer, expiresIn }) {
+export function sanitizeTitle(t) {
+  return String(t ?? "").replace(/[\u0000-\u001F<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+// Rough file type used for the icon / preview on the share page.
+export function fileKind(mime = "", name = "") {
+  const m = String(mime).toLowerCase();
+  const ext = (String(name).split(".").pop() || "").toLowerCase();
+  if (m === "image/svg+xml" || ext === "svg") return "svg";
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  if (m === "application/pdf" || ext === "pdf") return "pdf";
+  if (/zip|rar|7z|tar|gzip/.test(m) || ["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "archive";
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "doc";
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "sheet";
+  if (["ppt", "pptx", "odp"].includes(ext)) return "slides";
+  if (["js", "ts", "jsx", "tsx", "json", "html", "css", "py", "java", "c", "cpp", "go", "rs", "php", "sh", "xml", "yml", "yaml"].includes(ext)) return "code";
+  if (m.startsWith("text/") || ["txt", "md", "log"].includes(ext)) return "text";
+  return "other";
+}
+// Only these are streamed inline (as <img>/<video>/<audio> sources). Everything else is download-only.
+export const PREVIEW_KINDS = new Set(["image", "svg", "video", "audio"]);
+
+export async function createCloudShareRecord({ originalName, mimeType, buffer, expiresIn, title, owner }) {
   const expiresAt = getExpiresAt(expiresIn);
   const M = await getCloudModel();
   const doc = await M.create({
     shareId: crypto.randomBytes(9).toString("base64url"),
     originalName: sanitizeFilename(originalName),
+    title: sanitizeTitle(title),
+    owner: owner ? String(owner) : "",
     mimeType: mimeType || "application/octet-stream",
     size: buffer.length,
     data: buffer,
@@ -134,15 +162,16 @@ function plain(doc) {
   return { ...o, expiresAt: o.expiresAt ? new Date(o.expiresAt).toISOString() : null };
 }
 
-export async function findCloudShareRecord(shareId, { withData = false } = {}) {
+export async function findCloudShareRecord(shareId, { withData = false, includeExpired = false } = {}) {
   const M = await getCloudModel();
   let q = M.findOne({ shareId: String(shareId) });
   if (withData) q = q.select("+data");
   const doc = await q;
   if (!doc) return null;
   const rec = plain(doc);
-  if (rec.expiresAt && new Date(rec.expiresAt).getTime() <= Date.now()) return null;
-  return rec;
+  const expired = Boolean(rec.expiresAt && new Date(rec.expiresAt).getTime() <= Date.now());
+  if (expired && !includeExpired) return null;
+  return { ...rec, expired };
 }
 
 export async function incrementCloudShareDownloadCount(shareId) {
@@ -150,9 +179,45 @@ export async function incrementCloudShareDownloadCount(shareId) {
   await M.updateOne({ shareId: String(shareId) }, { $inc: { downloadCount: 1 } });
 }
 
+// Files uploaded by one user (newest first, no file bytes).
+export async function listCloudShareByOwner(owner, limit = 100) {
+  const M = await getCloudModel();
+  const docs = await M.find({ owner: String(owner) }).select("-data").sort({ createdAt: -1 }).limit(limit);
+  return docs.map(plain);
+}
+
+export async function deleteCloudShareRecord(shareId, owner = null) {
+  const M = await getCloudModel();
+  const filter = { shareId: String(shareId) };
+  if (owner) filter.owner = String(owner);
+  const rec = await M.findOne(filter);
+  if (!rec) return false;
+  await M.deleteOne(filter);
+  return true;
+}
+
+// Admin overview: totals + the newest files (all users).
+export async function cloudShareOverview(limit = 50) {
+  const M = await getCloudModel();
+  const all = (await M.find({}).select("-data").sort({ createdAt: -1 }).limit(5000)).map(plain);
+  const now = Date.now();
+  const active = all.filter((f) => !f.expiresAt || new Date(f.expiresAt).getTime() > now);
+  return {
+    totalFiles: all.length,
+    activeFiles: active.length,
+    expiredFiles: all.length - active.length,
+    totalBytes: all.reduce((n, f) => n + (f.size || 0), 0),
+    downloads: all.reduce((n, f) => n + (f.downloadCount || 0), 0),
+    items: all.slice(0, limit),
+  };
+}
+
 export function toPublicCloudShareRecord(r) {
   return {
     shareId: r.shareId,
+    title: r.title || "",
+    kind: fileKind(r.mimeType, r.originalName),
+    expired: Boolean(r.expired),
     name: r.originalName,
     size: r.size,
     mimeType: r.mimeType,

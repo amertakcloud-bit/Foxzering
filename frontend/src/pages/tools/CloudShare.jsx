@@ -3,7 +3,8 @@ import Select from "../../components/ui/Select";
 import { API_URL, getToken } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import TokenCost from "../../components/tools/TokenCost";
-import { RATES, tokensForBytes } from "../../lib/tokens";
+import { RATES, tokensForBytes, useRates } from "../../lib/tokens";
+import { copyText, fmtSize, kindMeta, kindOf, sharePageUrl } from "../../data/tools/cloudShare/common";
 import { useFeedback } from "../../components/ui/Feedback";
 import { useLanguage } from "../../context/LanguageContext";
 
@@ -14,15 +15,27 @@ const EXPIRY = [
   ["7d", "cs7d"],
 ];
 
-const fmtSize = (b) =>
-  b >= 1048576
-    ? `${(b / 1048576).toFixed(1)} MB`
-    : `${Math.max(1, Math.round(b / 1024))} KB`;
+// Small preview of the chosen file: image thumbnail, or the file-type icon.
+function LocalPreview({ file }) {
+  const kind = kindOf(file.type, file.name);
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    if (kind !== "image" && kind !== "svg") return undefined;
+    const u = URL.createObjectURL(file);
+    setSrc(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file, kind]);
+  const m = kindMeta(kind);
+  return src ? <img className="cs-thumb" src={src} alt="" /> : <i className={m.icon} style={{ color: m.color }} aria-hidden="true" />;
+}
 
 export default function CloudShare() {
   const { toast } = useFeedback();
   const { t } = useLanguage();
   const { user, refreshUser } = useAuth();
+  useRates();
+  const [title, setTitle] = useState("");
+  const [uploaded, setUploaded] = useState(null);
   const [cfg, setCfg] = useState({ available: true, maxFileSizeMB: 4 });
   const [file, setFile] = useState(null);
   const [expiresIn, setExpiresIn] = useState("never");
@@ -71,6 +84,7 @@ export default function CloudShare() {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("expiresIn", expiresIn);
+    if (title.trim()) fd.append("title", title.trim());
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("POST", `${API_URL}/cloudshare/upload`);
@@ -89,9 +103,10 @@ export default function CloudShare() {
       if (
         xhr.status >= 200 &&
         xhr.status < 300 &&
-        (p?.file?.downloadUrl || p?.file?.url)
+        (p?.file?.shareId || p?.file?.url)
       ) {
-        setLink(p.file.downloadUrl || p.file.url);
+        setUploaded(p.file);
+        setLink(p.file.shareId ? sharePageUrl(p.file.shareId) : p.file.url);
         setProgress(100);
         setView("success");
         refreshUser();
@@ -115,6 +130,8 @@ export default function CloudShare() {
   const reset = () => {
     xhrRef.current?.abort();
     setFile(null);
+    setTitle("");
+    setUploaded(null);
     setLink("");
     setProgress(0);
     setError("");
@@ -123,13 +140,7 @@ export default function CloudShare() {
   };
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-    } catch {
-      const el = document.getElementById("cs-link");
-      el?.select();
-      document.execCommand("copy");
-    }
+    if (!(await copyText(link))) document.getElementById("cs-link")?.select();
     toast.success(t("copied"));
   };
 
@@ -181,10 +192,7 @@ export default function CloudShare() {
                   (e.key === "Enter" || e.key === " ") && input.current?.click()
                 }
               >
-                <i
-                  className={file ? "ri-file-3-line" : "ri-upload-cloud-2-line"}
-                  aria-hidden="true"
-                />
+                {file ? <LocalPreview file={file} /> : <i className="ri-upload-cloud-2-line" aria-hidden="true" />}
                 {file ? (
                   <>
                     <p className="cs-fname">{file.name}</p>
@@ -216,6 +224,19 @@ export default function CloudShare() {
                 aria-label={t("csBrowse")}
                 onChange={(e) => pick(e.target.files?.[0])}
               />
+
+              <div className="cs-field">
+                <label htmlFor="cs-title">{t("csTitleLabel")}</label>
+                <input
+                  id="cs-title"
+                  className="cs-input"
+                  value={title}
+                  maxLength={120}
+                  placeholder={t("csTitlePh")}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <p className="cs-muted cs-note" style={{ textAlign: "left" }}>{t("csTitleHint")}</p>
+              </div>
 
               <div className="cs-row">
                 <label htmlFor="cs-exp">{t("csExpires")}</label>
@@ -250,9 +271,9 @@ export default function CloudShare() {
             <div className="cs-step">
               <p className="cs-title">{t("csUploading")}</p>
               <div className="cs-file">
-                <i className="ri-file-3-line" />
+                {file ? <LocalPreview file={file} /> : <i className="ri-file-3-line" />}
                 <div>
-                  <p className="cs-fname">{file?.name}</p>
+                  <p className="cs-fname">{title.trim() || file?.name}</p>
                   <p className="cs-muted">{file && fmtSize(file.size)}</p>
                 </div>
               </div>
@@ -282,14 +303,14 @@ export default function CloudShare() {
                 <i className="ri-checkbox-circle-fill" /> {t("csDone")}
               </p>
               <div className="cs-file">
-                <i className="ri-file-3-line" />
+                {file ? <LocalPreview file={file} /> : <i className="ri-file-3-line" />}
                 <div>
-                  <p className="cs-fname">{file?.name}</p>
+                  <p className="cs-fname">{uploaded?.title || file?.name}</p>
                   <p className="cs-muted">{file && fmtSize(file.size)}</p>
                 </div>
               </div>
               <label className="cs-muted" htmlFor="cs-link">
-                {t("csYourLink")}
+                {t("csShareLink")}
               </label>
               <input
                 id="cs-link"
@@ -312,7 +333,7 @@ export default function CloudShare() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <i className="ri-external-link-line" /> {t("csOpen")}
+                  <i className="ri-external-link-line" /> {t("csViewPage")}
                 </a>
               </div>
               <button type="button" className="cs-link-btn" onClick={reset}>

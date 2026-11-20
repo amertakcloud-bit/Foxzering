@@ -1,4 +1,4 @@
-import { RATES } from "../lib/billing.js";
+import { getRates } from "../lib/billing.js";
 import { isCloudShareAvailable } from "../services/cloudShareService.js";
 import { Readable } from "node:stream";
 import { AppError } from "../lib/AppError.js";
@@ -18,12 +18,13 @@ import { MAX_UPLOAD_MB } from "../lib/limits.js";
 // GET /api/tools — what the frontend can offer, straight from the server's real config.
 export const getTools = asyncHandler(async (req, res) => {
   const adminKey = Boolean((await getAdminGeminiKey()).key);
+  const RATES = await getRates();
   res.json({
     success: true,
     data: {
       loggedIn: Boolean(req.user),
       limits: { uploadMb: MAX_UPLOAD_MB },
-      rates: { captionPerMB: RATES.captionPerMB, cloudSharePerMB: RATES.cloudSharePerMB },
+      rates: RATES,
       tools: {
         qr: { available: true, types: QR_TYPES },
         tts: { available: true, voices: KHMER_VOICES },

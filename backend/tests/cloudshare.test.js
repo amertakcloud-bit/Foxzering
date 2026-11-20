@@ -68,3 +68,26 @@ test("translateToKhmer with speakers returns text + gender per line", async () =
   const out = await translateToKhmer({ apiKey: "k".repeat(10), lines: ["hi", "yes"], speakers: true });
   assert.deepEqual(out, [{ text: "សួស្តី", gender: "f" }, { text: "បាទ", gender: "m" }]);
 });
+
+import { fileKind, sanitizeTitle, PREVIEW_KINDS, toPublicCloudShareRecord } from "../services/cloudShareService.js";
+
+test("cloudshare: file kinds, safe previews, titles and owner", async () => {
+  assert.equal(fileKind("image/png", "a.png"), "image");
+  assert.equal(fileKind("image/svg+xml", "a.svg"), "svg");
+  assert.equal(fileKind("application/octet-stream", "pic.svg"), "svg");
+  assert.equal(fileKind("video/mp4", "a.mp4"), "video");
+  assert.equal(fileKind("text/html", "x.html"), "code");
+  assert.ok(PREVIEW_KINDS.has("video") && !PREVIEW_KINDS.has("pdf") && !PREVIEW_KINDS.has("code")); // html is never served inline
+  assert.equal(sanitizeTitle("  <b>Hi</b>\n there  "), "b Hi /b there");
+  assert.equal(sanitizeTitle("x".repeat(300)).length, 120);
+  const store = [];
+  const mk = (d) => ({ ...d, createdAt: "2026-01-01T00:00:00.000Z", toObject() { return { ...d, createdAt: "2026-01-01T00:00:00.000Z" }; } });
+  __setCloudModel({ db: { readyState: 1 }, create: async (d) => { const x = mk(d); store.push(x); return x; } });
+  const rec = await createCloudShareRecord({ originalName: "v.mp4", mimeType: "video/mp4", buffer: Buffer.from("abc"), title: " My clip ", owner: 42 });
+  assert.equal(rec.title, "My clip");
+  assert.equal(rec.owner, "42");
+  const pub = toPublicCloudShareRecord(rec);
+  assert.equal(pub.kind, "video");
+  assert.equal(pub.title, "My clip");
+  assert.equal(pub.createdAt, "2026-01-01T00:00:00.000Z");
+});

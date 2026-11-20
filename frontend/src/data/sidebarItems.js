@@ -56,7 +56,7 @@ const sidebarItems = [
   {
     labelKey: "notify",
     icon: "ri-notification-3-line",
-    path: "/notification",
+    path: "/notifications",
   },
   {
     labelKey: "settings",

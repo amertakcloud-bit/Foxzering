@@ -3,8 +3,8 @@ export default function Logo() {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width={50}>
       <defs>
         <linearGradient id="darkGhost" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="var(--text)" />
-          <stop offset="100%" stop-color="var(--text-muted)" />
+          <stop offset="0%" stopColor="var(--text)" />
+          <stop offset="100%" stopColor="var(--text-muted)" />
         </linearGradient>
       </defs>
       <path

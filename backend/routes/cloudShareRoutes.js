@@ -1,7 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
 import {
+  deleteCloudShareFile,
   downloadCloudShareFile,
+  listMyCloudShareFiles,
+  previewCloudShareFile,
   getCloudShareFileInfo,
   getCloudShareConfigHandler,
   uploadCloudShareFile,
@@ -22,7 +25,10 @@ const upload = multer({
 
 router.get("/config", getCloudShareConfigHandler);
 router.post("/upload", dbReady, protect, upload.single("file"), uploadCloudShareFile);
+router.get("/mine", dbReady, protect, listMyCloudShareFiles);
 router.get("/files/:shareId", getCloudShareFileInfo);
+router.get("/files/:shareId/preview", previewCloudShareFile);
+router.delete("/files/:shareId", dbReady, protect, deleteCloudShareFile);
 router.get("/files/:shareId/download", downloadCloudShareFile);
 
 export default router;
