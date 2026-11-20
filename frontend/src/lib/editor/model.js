@@ -1,0 +1,494 @@
+// Pure project model for the video editor (no DOM, unit-tested).
+//
+// project = { version, width, height, fps, media: { [id]: MediaMeta }, clips: Clip[], captionStyle }
+// MediaMeta = { id, name, kind: "video"|"audio"|"image", duration, width, height, size, source }
+// Clip      = { id, lane, type, start, dur, mediaId?, offset?, volume?, x?, y?, scale?, opacity?, text?, style? }
+//
+// Lanes (top → bottom on the timeline; visual lanes are drawn bottom-to-top in this order):
+export const LANES = [
+  { id: "overlay", kind: "visual", types: ["image", "video"] },
+  { id: "text", kind: "text", types: ["text"] },
+  { id: "caption", kind: "text", types: ["caption"] },
+  { id: "video", kind: "visual", types: ["video", "image"] },
+  { id: "audio", kind: "audio", types: ["audio", "video"] },
+  { id: "voice", kind: "audio", types: ["audio"] },
+];
+export const MIN_DUR = 0.1;
+
+// Clips that overlap in time on the same lane never sit on top of each other: each lane is split into
+// tracks (rows). Greedy first-fit by start time → { track: Map(clipId → row), rows: { [laneId]: rowCount } }.
+export function assignTracks(clips) {
+  const track = new Map();
+  const rows = {};
+  for (const lane of LANES) {
+    const ends = [];
+    const list = clips.filter((c) => c.lane === lane.id).sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+    for (const c of list) {
+      let r = ends.findIndex((e) => e <= c.start + 1e-6);
+      if (r < 0) { r = ends.length; ends.push(0); }
+      ends[r] = c.start + c.dur;
+      track.set(c.id, r);
+    }
+    rows[lane.id] = Math.max(1, ends.length);
+  }
+  return { track, rows };
+}
+export const IMAGE_DEFAULT_DUR = 5;
+export const TEXT_DEFAULT_DUR = 4;
+
+export const DEFAULT_TEXT_STYLE = { size: 7, color: "#ffffff", bg: "rgba(0,0,0,0)", bold: true, italic: false, outline: true, shadow: false, align: "center", font: "sans" };
+export const DEFAULT_CAPTION_STYLE = { size: 5.2, color: "#ffffff", bg: "rgba(0,0,0,0.55)", bold: true, outline: false, align: "center", maxChars: 32 }; // maxChars: a long caption is shown in short groups, following the speech
+
+let counter = 0;
+export const uid = (p = "c") => `${p}${Date.now().toString(36)}${(++counter).toString(36)}`;
+
+export function newProject({ width = 1280, height = 720 } = {}) {
+  return { version: 1, width, height, fps: 30, media: {}, clips: [], captionStyle: { ...DEFAULT_CAPTION_STYLE } };
+}
+
+export const round3 = (n) => Math.round(n * 1000) / 1000;
+export const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+export const clipEnd = (c) => c.start + c.dur;
+
+export function projectDuration(p) {
+  return round3(p.clips.reduce((m, c) => Math.max(m, clipEnd(c)), 0));
+}
+
+// ── clip factories ──
+export function makeMediaClip(media, { start = 0, lane, dur } = {}) {
+  const isImage = media.kind === "image";
+  const d = dur ?? (isImage ? IMAGE_DEFAULT_DUR : Math.max(MIN_DUR, media.duration || 1));
+  const laneId = lane || (media.kind === "audio" ? (media.source === "voice" ? "voice" : "audio") : "video");
+  return {
+    id: uid(), lane: laneId, type: media.kind, mediaId: media.id,
+    start: round3(Math.max(0, start)), dur: round3(d), offset: 0,
+    volume: 1, x: 0.5, y: 0.5, scale: 1, opacity: 1,
+  };
+}
+
+export function makeTextClip({ text = "Text", start = 0, dur = TEXT_DEFAULT_DUR, lane = "text", type = "text", style } = {}) {
+  return {
+    id: uid(), lane, type, start: round3(Math.max(0, start)), dur: round3(dur), text,
+    x: 0.5, y: type === "caption" ? 0.88 : 0.5, style: { ...(type === "caption" ? DEFAULT_CAPTION_STYLE : DEFAULT_TEXT_STYLE), ...(style || {}) },
+  };
+}
+
+// ── immutable edits (each returns a NEW project) ──
+const mapClip = (p, id, fn) => ({ ...p, clips: p.clips.map((c) => (c.id === id ? fn(c) : c)) });
+
+export const addMedia = (p, media) => ({ ...p, media: { ...p.media, [media.id]: media } });
+export const addClip = (p, clip) => ({ ...p, clips: [...p.clips, clip] });
+export const removeClip = (p, id) => ({ ...p, clips: p.clips.filter((c) => c.id !== id) });
+export const updateClip = (p, id, patch) => mapClip(p, id, (c) => ({ ...c, ...patch }));
+
+export function moveClip(p, id, start) {
+  return mapClip(p, id, (c) => ({ ...c, start: round3(Math.max(0, start)) }));
+}
+
+// Source length available for a media clip (Infinity for images/text).
+function sourceLimit(p, c) {
+  if (c.type === "image" || c.type === "text" || c.type === "caption") return Infinity;
+  const m = p.media[c.mediaId];
+  return m?.duration > 0 ? m.duration : Infinity;
+}
+
+// Trim the left edge to timeline time `t` (the clip's source offset moves with it).
+export function trimStart(p, id, t) {
+  return mapClip(p, id, (c) => {
+    const end = clipEnd(c);
+    let nt = clamp(t, 0, end - MIN_DUR);
+    const hasSource = c.type === "video" || c.type === "audio";
+    if (hasSource && c.offset + (nt - c.start) < 0) nt = c.start - c.offset; // cannot go before the source start
+    const delta = nt - c.start;
+    return { ...c, start: round3(nt), dur: round3(end - nt), ...(hasSource ? { offset: round3((c.offset || 0) + delta) } : {}) };
+  });
+}
+
+// Trim the right edge to timeline time `t`.
+export function trimEnd(p, id, t) {
+  return mapClip(p, id, (c) => {
+    const limit = sourceLimit(p, c);
+    const maxDur = limit === Infinity ? Infinity : limit - (c.offset || 0);
+    return { ...c, dur: round3(clamp(t - c.start, MIN_DUR, maxDur)) };
+  });
+}
+
+// Split a clip at timeline time `t` into two clips. Returns { project, ids } (ids = [left, right]).
+export function splitClip(p, id, t) {
+  const c = p.clips.find((x) => x.id === id);
+  if (!c || t <= c.start + MIN_DUR || t >= clipEnd(c) - MIN_DUR) return { project: p, ids: null };
+  const left = { ...c, dur: round3(t - c.start) };
+  const right = { ...c, id: uid(), start: round3(t), dur: round3(clipEnd(c) - t) };
+  if (c.type === "video" || c.type === "audio") right.offset = round3((c.offset || 0) + (t - c.start));
+  return { project: { ...p, clips: p.clips.flatMap((x) => (x.id === id ? [left, right] : [x])) }, ids: [left.id, right.id] };
+}
+
+export function duplicateClip(p, id) {
+  const c = p.clips.find((x) => x.id === id);
+  if (!c) return { project: p, id: null };
+  const copy = { ...c, id: uid(), start: round3(clipEnd(c)) };
+  return { project: addClip(p, copy), id: copy.id };
+}
+
+// Clips that are visible/audible at time t.
+export const clipsAt = (p, t) => p.clips.filter((c) => t >= c.start - 1e-6 && t < clipEnd(c) - 1e-6);
+
+// Draw order: lanes bottom → top (video first, then overlay, then text/captions on top).
+const DRAW_ORDER = ["video", "overlay", "text", "caption"];
+export const drawOrder = (clips) =>
+  clips.filter((c) => DRAW_ORDER.includes(c.lane)).sort((a, b) => DRAW_ORDER.indexOf(a.lane) - DRAW_ORDER.indexOf(b.lane) || a.start - b.start);
+
+// Snap `t` to nearby points (playhead, other clip edges). Returns the snapped time.
+export function snap(p, t, { points = [], threshold = 0.08, ignoreId } = {}) {
+  const cands = [0, ...points];
+  for (const c of p.clips) if (c.id !== ignoreId) cands.push(c.start, clipEnd(c));
+  let best = t, bd = threshold;
+  for (const x of cands) { const d = Math.abs(x - t); if (d < bd) { bd = d; best = x; } }
+  return round3(best);
+}
+
+// ── captions ⇄ SRT ──
+export function parseSrt(text) {
+  const src = String(text || "").replace(/^﻿/, "").replace(/\r/g, "").trim();
+  if (!src) return [];
+  const toSec = (s) => {
+    const m = /^(\d+):(\d{1,2}):(\d{1,2})[,.](\d{1,3})$/.exec(s.trim());
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4].padEnd(3, "0")) / 1000 : null;
+  };
+  const cues = [];
+  for (const block of src.split(/\n{2,}/)) {
+    const lines = block.split("\n").map((l) => l.trimEnd());
+    const ti = lines.findIndex((l) => l.includes("-->"));
+    if (ti < 0) continue;
+    const [a, b] = lines[ti].split("-->");
+    const start = toSec(a), end = toSec((b || "").trim().split(/\s+/)[0] || "");
+    const body = lines.slice(ti + 1).join("\n").replace(/<[^>]+>/g, "").trim();
+    if (start == null || end == null || end <= start || !body) continue;
+    cues.push({ start: round3(start), end: round3(end), text: body });
+  }
+  return cues;
+}
+
+const pad = (n, l = 2) => String(n).padStart(l, "0");
+export function srtTime(sec) {
+  const ms = Math.round(Math.max(0, sec) * 1000);
+  return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor((ms % 3600000) / 60000))}:${pad(Math.floor((ms % 60000) / 1000))},${pad(ms % 1000, 3)}`;
+}
+
+export function buildSrt(clips) {
+  const caps = clips.filter((c) => c.type === "caption" && c.text).sort((a, b) => a.start - b.start);
+  return caps.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(clipEnd(c))}\n${c.text}\n`).join("\n");
+}
+
+// SRT cues (in source-media time) → caption clips on the timeline for a media clip.
+// Only the part of the source that is actually used (offset … offset+dur) is kept.
+export function cuesToCaptionClips(cues, source, style) {
+  const lo = source.offset || 0, hi = lo + source.dur;
+  const out = [];
+  for (const q of cues) {
+    const s = Math.max(q.start, lo), e = Math.min(q.end, hi);
+    if (e - s < 0.05) continue;
+    out.push({ ...makeTextClip({ text: q.text, start: source.start + (s - lo), dur: e - s, lane: "caption", type: "caption", style }), source: source.id });
+  }
+  return out;
+}
+
+// Plain cues (already on the timeline clock) → caption clips.
+export function cuesToTimelineCaptions(cues, style) {
+  return cues.map((q) => makeTextClip({ text: q.text, start: q.start, dur: Math.max(MIN_DUR, q.end - q.start), lane: "caption", type: "caption", style }));
+}
+
+// Playback speed (percent for edge-tts: -50…+100) needed to fit `naturalSec` of speech into `slotSec`.
+export function ttsRateFor(naturalSec, slotSec) {
+  if (!(slotSec > 0) || !(naturalSec > slotSec * 1.02)) return 0;
+  return clamp(Math.ceil((naturalSec / slotSec - 1) * 100), 0, 100);
+}
+
+// ── real-editor operations ──
+
+// Remove a clip and close the gap: later clips on the same lane move left by its duration.
+export function rippleDelete(p, id) {
+  const c = p.clips.find((x) => x.id === id);
+  if (!c) return p;
+  const end = clipEnd(c);
+  return {
+    ...p,
+    clips: p.clips.filter((x) => x.id !== id).map((x) => (x.lane === c.lane && x.start >= end - 1e-6 ? { ...x, start: round3(Math.max(0, x.start - c.dur)) } : x)),
+  };
+}
+
+// Cut the part [a, b] out of a clip (split twice, drop the middle, close the gap on that lane).
+export function cutRange(p, id, a, b) {
+  const c = p.clips.find((x) => x.id === id);
+  if (!c) return p;
+  const lo = clamp(Math.min(a, b), c.start, clipEnd(c)), hi = clamp(Math.max(a, b), c.start, clipEnd(c));
+  if (hi - lo < MIN_DUR) return p;
+  let cur = p, mid = id;
+  if (lo > c.start + MIN_DUR) { const r = splitClip(cur, id, lo); if (r.ids) { cur = r.project; mid = r.ids[1]; } }
+  const m = cur.clips.find((x) => x.id === mid);
+  if (hi < clipEnd(m) - MIN_DUR) { const r = splitClip(cur, mid, hi); if (r.ids) cur = r.project; }
+  return rippleDelete(cur, mid);
+}
+
+// Rotated-rectangle geometry (project pixels). box = { cx, cy, w, h, rot(deg) }.
+export function toLocal(box, px, py) {
+  const a = -((box.rot || 0) * Math.PI) / 180, dx = px - box.cx, dy = py - box.cy;
+  return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
+}
+export function pointInBox(box, px, py, pad = 0) {
+  const l = toLocal(box, px, py);
+  return Math.abs(l.x) <= box.w / 2 + pad && Math.abs(l.y) <= box.h / 2 + pad;
+}
+export function boxCorners(box) {
+  const a = ((box.rot || 0) * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+    const x = (sx * box.w) / 2, y = (sy * box.h) / 2;
+    return { x: box.cx + x * cos - y * sin, y: box.cy + x * sin + y * cos };
+  });
+}
+// Top-most clip under a point. `boxes` = [{ clip, box }] in draw order (bottom → top).
+export function hitTest(boxes, px, py) {
+  for (let i = boxes.length - 1; i >= 0; i--) if (pointInBox(boxes[i].box, px, py, 4)) return boxes[i].clip;
+  return null;
+}
+
+// Fade in/out multiplier at timeline time t.
+export function fadeAlpha(c, t) {
+  let a = 1;
+  const into = t - c.start, left = clipEnd(c) - t;
+  if (c.fadeIn > 0 && into < c.fadeIn) a = Math.min(a, Math.max(0, into / c.fadeIn));
+  if (c.fadeOut > 0 && left < c.fadeOut) a = Math.min(a, Math.max(0, left / c.fadeOut));
+  return a;
+}
+
+// ── silence removal (pure: takes ranges of silence in SOURCE seconds) ──
+// Cuts every silent range out of one media clip and closes the gaps (clips to the right of it, on all lanes, shift left).
+export function removeSilentRanges(p, id, silences) {
+  const c0 = p.clips.find((x) => x.id === id);
+  if (!c0 || !silences?.length) return { project: p, removed: 0 };
+  let cur = p, removed = 0;
+  const lo = c0.offset || 0, hi = lo + c0.dur;
+  // right-to-left so earlier timeline positions stay valid
+  const ranges = silences.map(([s, e]) => [Math.max(lo, s), Math.min(hi, e)]).filter(([s, e]) => e - s >= 0.2).sort((a, b) => b[0] - a[0]);
+  for (const [s, e] of ranges) {
+    const a = c0.start + (s - lo), b = c0.start + (e - lo);
+    const next = cutRange(cur, id, a, b);
+    // shift everything after the cut on the other lanes too, so captions/voices stay in sync
+    const gap = b - a;
+    cur = { ...next, clips: next.clips.map((x) => (x.lane !== c0.lane && x.start >= b - 1e-6 ? { ...x, start: round3(Math.max(0, x.start - gap)) } : x)) };
+    if (next !== cur) removed += gap;
+  }
+  return { project: cur, removed: round3(removed) };
+}
+
+// ── style presets (Text tab + AI quick actions) ──
+export const TEXT_PRESETS = [
+  { id: "heading", key: "vePresetHeading", text: "Title", style: { size: 11, bold: true, outline: true, shadow: true } },
+  { id: "subtitle", key: "vePresetSubtitle", text: "Subtitle", style: { size: 6, bold: false, outline: true } },
+  { id: "yellow", key: "vePresetYellow", text: "Text", style: { size: 8, color: "#facc15", bold: true, outline: true, outlineColor: "#000000" } },
+  { id: "box", key: "vePresetBox", text: "Text", style: { size: 6.5, color: "#111111", bg: "rgba(255,255,255,0.85)", bold: true, outline: false } },
+  { id: "neon", key: "vePresetNeon", text: "Text", style: { size: 8, color: "#ffffff", bg: "rgba(220,36,100,0.85)", bold: true, outline: false } },
+  { id: "serif", key: "vePresetSerif", text: "Text", style: { size: 8, font: "serif", italic: true, bold: false, outline: false, shadow: true } },
+];
+export const CAPTION_PRESETS = [
+  { id: "classic", key: "veCapClassic", style: { size: 5.2, color: "#ffffff", bg: "rgba(0,0,0,0.55)", bold: true, outline: false, shadow: false, font: "sans" }, y: 0.88 },
+  { id: "yellow", key: "veCapYellow", style: { size: 5.8, color: "#facc15", bg: "rgba(0,0,0,0)", bold: true, outline: true, outlineColor: "#000000", shadow: false, font: "sans" }, y: 0.86 },
+  { id: "pink", key: "veCapPink", style: { size: 5.6, color: "#ffffff", bg: "rgba(220,36,100,0.85)", bold: true, outline: false, shadow: false, font: "sans" }, y: 0.86 },
+  { id: "minimal", key: "veCapMinimal", style: { size: 5, color: "#ffffff", bg: "rgba(0,0,0,0)", bold: false, outline: true, shadow: true, font: "sans" }, y: 0.9 },
+  { id: "center", key: "veCapCenter", style: { size: 7.5, color: "#ffffff", bg: "rgba(0,0,0,0)", bold: true, outline: true, shadow: true, font: "display" }, y: 0.5 },
+];
+export function applyCaptionPreset(p, preset) {
+  const cs = p.captionStyle || {};
+  const keep = { karaoke: cs.karaoke, hl: cs.hl }; // a look must not switch the word highlight off
+  const shown = Object.fromEntries(DISPLAY_KEYS.filter((k) => cs[k] !== undefined).map((k) => [k, cs[k]])); // …nor the grouping / animation
+  const st = { ...preset.style, ...shown, ...(keep.karaoke ? keep : {}) };
+  return { ...p, captionStyle: st, clips: p.clips.map((c) => (c.type === "caption" ? { ...c, style: { ...st }, y: preset.y } : c)) };
+}
+
+// ── word highlight ("karaoke") ──
+// Splits text into tokens; word tokens are the ones that can be highlighted (Khmer/Chinese too, via Intl.Segmenter).
+export function splitWords(text) {
+  const str = String(text ?? "");
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    return Array.from(new Intl.Segmenter(undefined, { granularity: "word" }).segment(str), (x) => ({ s: x.segment, word: Boolean(x.isWordLike) }));
+  }
+  return str.split(/(\s+)/).filter(Boolean).map((s) => ({ s, word: /\S/.test(s) }));
+}
+// Which word is being spoken at `tRel` seconds into a clip? Time is shared out by word length.
+// `total` = how long the speech lasts (voice length, or the whole clip). Returns -1 when none.
+export function activeWordIndex(weights, tRel, total) {
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (!sum || !(total > 0) || tRel < 0 || tRel >= total) return -1;
+  const x = (tRel / total) * sum;
+  let acc = 0;
+  for (let i = 0; i < weights.length; i++) { acc += weights[i]; if (x < acc) return i; }
+  return weights.length - 1;
+}
+export const DEFAULT_HIGHLIGHT = "#facc15";
+
+// Turn the spoken-word highlight on/off (and set its colour) for every caption + the default caption style.
+export function setCaptionHighlight(p, on, color = DEFAULT_HIGHLIGHT) {
+  const patch = { karaoke: Boolean(on), hl: color };
+  return { ...p, captionStyle: { ...p.captionStyle, ...patch }, clips: p.clips.map((c) => (c.type === "caption" ? { ...c, style: { ...c.style, ...patch } } : c)) };
+}
+
+// ── word-highlight templates ──
+// hlMode: color (word changes colour) · box (coloured box behind the word) · underline · pop (word grows) · glow · fill (spoken words stay coloured)
+export const HL_TEMPLATES = [
+  { id: "classic",  key: "veHl_classic",  look: { karaoke: true, hlMode: "color", hl: "#facc15", color: "#ffffff" } },
+  { id: "tiktok",   key: "veHl_tiktok",   look: { karaoke: true, hlMode: "pop", hl: "#facc15", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true, bg: "rgba(0,0,0,0)" } },
+  { id: "pinkbox",  key: "veHl_pinkbox",  look: { karaoke: true, hlMode: "box", hl: "#ffffff", hlBg: "#ec4899", hlText: "#ffffff", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  { id: "whitebox", key: "veHl_whitebox", look: { karaoke: true, hlMode: "box", hl: "#111111", hlBg: "#ffffff", hlText: "#111111", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  { id: "greenfill",key: "veHl_greenfill",look: { karaoke: true, hlMode: "fill", hl: "#22c55e", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  { id: "cyanglow", key: "veHl_cyanglow", look: { karaoke: true, hlMode: "glow", hl: "#22d3ee", color: "#ffffff", bold: true, shadow: false } },
+  { id: "underline",key: "veHl_underline",look: { karaoke: true, hlMode: "underline", hl: "#f97316", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  { id: "redpop",   key: "veHl_redpop",   look: { karaoke: true, hlMode: "pop", hl: "#ef4444", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  { id: "purplebox",key: "veHl_purplebox",look: { karaoke: true, hlMode: "box", hl: "#ffffff", hlBg: "#a855f7", hlText: "#ffffff", color: "#ffffff", bold: true, bg: "rgba(0,0,0,0.45)" } },
+  { id: "bluefill", key: "veHl_bluefill", look: { karaoke: true, hlMode: "fill", hl: "#3b82f6", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000" } },
+  { id: "mintunder",key: "veHl_mintunder",look: { karaoke: true, hlMode: "underline", hl: "#34d399", color: "#ffffff", bold: true, bg: "rgba(0,0,0,0.5)" } },
+  { id: "yellowbox",key: "veHl_yellowbox",look: { karaoke: true, hlMode: "box", hl: "#111111", hlBg: "#facc15", hlText: "#111111", color: "#ffffff", outline: true, outlineColor: "#000000", bold: true } },
+  // gradient highlights (the spoken word is filled with a vertical colour gradient)
+  { id: "bluegrad", key: "veHl_bluegrad", look: { karaoke: true, hlMode: "fill", hl: "#3b82f6", hlGrad: ["#e0f2fe", "#3b82f6", "#1e3a8a"], color: "#ffffff", bold: true, outline: true, outlineColor: "#000000" } },
+  { id: "sunset",   key: "veHl_sunset",   look: { karaoke: true, hlMode: "fill", hl: "#f97316", hlGrad: ["#fde047", "#f97316", "#dc2626"], color: "#ffffff", bold: true, outline: true, outlineColor: "#000000" } },
+  { id: "neonmix",  key: "veHl_neonmix",  look: { karaoke: true, hlMode: "glow", hl: "#a855f7", hlGrad: ["#22d3ee", "#a855f7", "#ec4899"], color: "#ffffff", bold: true } },
+  { id: "gold",     key: "veHl_gold",     look: { karaoke: true, hlMode: "color", hl: "#facc15", hlGrad: ["#fff7ad", "#facc15", "#b45309"], color: "#ffffff", bold: true, outline: true, outlineColor: "#000000" } },
+  { id: "mintgrad", key: "veHl_mintgrad", look: { karaoke: true, hlMode: "pop", hl: "#34d399", hlGrad: ["#ecfccb", "#34d399", "#047857"], color: "#ffffff", bold: true, outline: true, outlineColor: "#000000" } },
+  // one word at a time (only the word being spoken is on screen)
+  { id: "oneword",  key: "veHl_oneword",  look: { karaoke: true, single: true, anim: "pop", hlMode: "color", hl: "#facc15", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", bg: "rgba(0,0,0,0)", size: 9 } },
+  { id: "onewordbox", key: "veHl_onewordbox", look: { karaoke: true, single: true, anim: "zoom", hlMode: "box", hl: "#111111", hlBg: "#facc15", hlText: "#111111", color: "#ffffff", bold: true, bg: "rgba(0,0,0,0)", size: 9 } },
+  { id: "onewordgrad", key: "veHl_onewordgrad", look: { karaoke: true, single: true, anim: "bounce", hlMode: "color", hl: "#ec4899", hlGrad: ["#22d3ee", "#a855f7", "#ec4899"], color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", bg: "rgba(0,0,0,0)", size: 9 } },
+  // words appear as they are spoken (typewriter), in short groups
+  { id: "typewriter", key: "veHl_typewriter", look: { karaoke: true, reveal: true, anim: "fade", hlMode: "color", hl: "#facc15", color: "#ffffff", bold: true, maxChars: 28 } },
+  { id: "revealbox", key: "veHl_revealbox", look: { karaoke: true, reveal: true, anim: "slide", hlMode: "box", hl: "#ffffff", hlBg: "#ec4899", hlText: "#ffffff", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", maxChars: 28 } },
+  // whole short group animates in, then the words light up
+  { id: "slidegroup", key: "veHl_slidegroup", look: { karaoke: true, anim: "slide", hlMode: "color", hl: "#22d3ee", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", maxChars: 26 } },
+  { id: "bouncegroup", key: "veHl_bouncegroup", look: { karaoke: true, anim: "bounce", hlMode: "pop", hl: "#facc15", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", maxChars: 22 } },
+  { id: "zoomgroup", key: "veHl_zoomgroup", look: { karaoke: true, anim: "zoom", hlMode: "underline", hl: "#f97316", color: "#ffffff", bold: true, outline: true, outlineColor: "#000000", maxChars: 24 } },
+  { id: "fadegroup", key: "veHl_fadegroup", look: { karaoke: true, anim: "fade", hlMode: "fill", hl: "#22c55e", color: "#ffffff", bold: true, bg: "rgba(0,0,0,0.45)", maxChars: 30 } },
+
+];
+// How a caption is shown over time (not its colours): word groups, one-word-at-a-time, typewriter reveal, entrance animation.
+export const DISPLAY_KEYS = ["maxChars", "single", "reveal", "anim"];
+export const ANIMS = ["none", "fade", "pop", "slide", "bounce", "zoom"];
+const HL_KEYS = ["karaoke", "hlMode", "hl", "hlBg", "hlText", "color", "outline", "outlineColor", "bold", "bg", "shadow", "hlGrad", "grad", ...DISPLAY_KEYS, "size"];
+// a template sets the whole look, so the previous template's extras (size, box, outline …) never linger
+const TPL_RESET = { hlGrad: null, single: false, reveal: false, anim: "none", size: 5.2, bg: "rgba(0,0,0,0.55)", outline: false, shadow: false, hlBg: undefined, hlText: undefined };
+// Applies a highlight template to EVERY caption (and becomes the default for new ones).
+export function applyHighlightTemplate(p, tpl) {
+  const patch = { ...TPL_RESET, ...Object.fromEntries(Object.entries(tpl.look).filter(([k]) => HL_KEYS.includes(k))) };
+  return { ...p, captionStyle: { ...p.captionStyle, ...patch }, clips: p.clips.map((c) => (c.type === "caption" ? { ...c, style: { ...c.style, ...patch } } : c)) };
+}
+// "Apply to all": copies the chosen properties of one clip to every clip of the same kind.
+const ALL_KEYS = {
+  text: { style: true, opacity: true, fadeIn: true, fadeOut: true },
+  caption: { style: true, y: true, opacity: true, fadeIn: true, fadeOut: true },
+  visual: { brightness: true, contrast: true, saturate: true, opacity: true, fadeIn: true, fadeOut: true },
+  audio: { volume: true, fadeIn: true, fadeOut: true },
+};
+export const allKind = (c) => (c.type === "caption" ? "caption" : c.type === "text" ? "text" : c.type === "video" || c.type === "image" ? "visual" : "audio");
+export function applyToAll(p, clip) {
+  const kind = allKind(clip), keys = Object.keys(ALL_KEYS[kind]);
+  let n = 0;
+  const clips = p.clips.map((c) => {
+    if (c.id === clip.id || allKind(c) !== kind) return c;
+    n++;
+    const patch = {};
+    for (const k of keys) if (clip[k] !== undefined) patch[k] = k === "style" ? { ...clip.style } : clip[k];
+    return { ...c, ...patch };
+  });
+  const captionStyle = kind === "caption" ? { ...clip.style } : p.captionStyle;
+  return { project: { ...p, clips, captionStyle }, count: n };
+}
+
+// ── how a caption is shown over time ──
+// text of ONE caption clip at `tRel` seconds into its speech. Styles:
+//   single  → only the word being spoken · reveal → words appear as spoken (typewriter), within a short group
+//   maxChars → the caption is shown in groups of at most that many characters (a long line never fills the screen)
+// Returns { text, active (word number inside `text`, -1 = none), age (seconds since this group/word appeared) }.
+export function captionView(text, tRel, total, st = {}) {
+  const toks = splitWords(text);
+  const widx = [];
+  toks.forEach((k, i) => { if (k.word) widx.push(i); });
+  const plain = !st.single && !st.reveal && !(Number(st.maxChars) > 0);
+  if (!widx.length) return { text: String(text ?? ""), active: -1, age: Math.max(0, tRel) };
+  const weights = widx.map((i) => Array.from(toks[i].s).length);
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const act = activeWordIndex(weights, tRel, total);
+  if (plain) return { text: String(text ?? ""), active: act, age: Math.max(0, tRel) };
+  const cur = act >= 0 ? act : tRel < 0 ? 0 : widx.length - 1; // before the speech starts show the first words, after it the last
+  // groups of whole words, each at most maxChars long (a single longer word is its own group)
+  const max = st.single ? 0 : Number(st.maxChars) || 0;
+  const groups = [];
+  let from = 0, chars = 0;
+  weights.forEach((w, i) => {
+    if (max && chars && chars + 1 + w > max) { groups.push([from, i - 1]); from = i; chars = 0; }
+    chars += (chars ? 1 : 0) + w;
+  });
+  groups.push([from, weights.length - 1]);
+  const g = groups.find(([a, b]) => cur >= a && cur <= b) || groups[0];
+  const first = st.single ? cur : g[0];
+  const last = st.single ? cur : st.reveal ? cur : g[1];
+  const out = toks.slice(widx[first], widx[last] + 1).map((k) => k.s).join("");
+  const unitStart = st.single ? first : g[0];
+  const before = weights.slice(0, unitStart).reduce((a, b) => a + b, 0);
+  const startSec = total > 0 && sum ? (before / sum) * total : 0;
+  return { text: out, active: act >= 0 ? cur - first : -1, age: Math.max(0, tRel - startSec) };
+}
+
+// Entrance animation for the group/word that just appeared. dy is in line heights.
+export function animFx(kind, age, dur = 0.25) {
+  const none = { alpha: 1, scale: 1, dy: 0 };
+  if (!kind || kind === "none") return none;
+  const a = clamp(age / dur, 0, 1), e = 1 - (1 - a) ** 3;
+  if (a >= 1) return none;
+  switch (kind) {
+    case "fade": return { alpha: e, scale: 1, dy: 0 };
+    case "pop": return { alpha: Math.min(1, a * 3), scale: 0.6 + 0.4 * e + 0.14 * Math.sin(a * Math.PI), dy: 0 };
+    case "slide": return { alpha: e, scale: 1, dy: (1 - e) * 0.7 };
+    case "bounce": return { alpha: Math.min(1, a * 4), scale: 1, dy: -Math.abs(Math.cos(a * Math.PI * 2.5)) * (1 - a) * 0.8 };
+    case "zoom": return { alpha: e, scale: 1.7 - 0.7 * e, dy: 0 };
+    default: return none;
+  }
+}
+
+// Display options (grouping / one word / typewriter / animation) for every caption + the default for new ones.
+export function setCaptionDisplay(p, patch) {
+  const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => DISPLAY_KEYS.includes(k)));
+  return { ...p, captionStyle: { ...p.captionStyle, ...clean }, clips: p.clips.map((c) => (c.type === "caption" ? { ...c, style: { ...c.style, ...clean } } : c)) };
+}
+
+// ── several clips at once ──
+export const isLocked = (c) => Boolean(c?.locked);
+const inSet = (ids) => { const s = new Set(ids); return (c) => s.has(c.id); };
+// Locked clips never move / trim / get deleted by bulk operations.
+export function moveClips(p, ids, delta) {
+  const pick = inSet(ids);
+  const movers = p.clips.filter((c) => pick(c) && !c.locked);
+  if (!movers.length) return p;
+  const minStart = Math.min(...movers.map((c) => c.start));
+  const d = Math.max(delta, -minStart); // the group stops at 0 instead of squashing
+  return { ...p, clips: p.clips.map((c) => (pick(c) && !c.locked ? { ...c, start: round3(c.start + d) } : c)) };
+}
+export const removeClips = (p, ids) => { const pick = inSet(ids); return { ...p, clips: p.clips.filter((c) => !(pick(c) && !c.locked)) }; };
+export const updateClips = (p, ids, patch, { force = false } = {}) => { const pick = inSet(ids); return { ...p, clips: p.clips.map((c) => (pick(c) && (force || !c.locked) ? { ...c, ...patch } : c)) }; };
+export const lockClips = (p, ids, locked) => updateClips(p, ids, { locked: Boolean(locked) }, { force: true });
+// Copies clips (relative timing kept) so they start at `at`; returns { project, ids }.
+export function pasteClips(p, clips, at) {
+  if (!clips?.length) return { project: p, ids: [] };
+  const t0 = Math.min(...clips.map((c) => c.start));
+  const copies = clips.map((c) => ({ ...c, id: uid(), start: round3(Math.max(0, at + (c.start - t0))), locked: false }));
+  return { project: { ...p, clips: [...p.clips, ...copies] }, ids: copies.map((c) => c.id) };
+}
+// Clips whose box (start…end, lane) overlaps the dragged rectangle: [t0,t1] seconds and the lane ids it touches.
+export function clipsInRange(p, t0, t1, laneIds) {
+  const lo = Math.min(t0, t1), hi = Math.max(t0, t1), lanes = new Set(laneIds);
+  return p.clips.filter((c) => lanes.has(c.lane) && c.start < hi && clipEnd(c) > lo).map((c) => c.id);
+}
+
+// ── crop (visual clips): fraction of the picture cut from each side (0…0.9) ──
+export const CROP_KEYS = ["cropL", "cropT", "cropR", "cropB"];
+export function cropRect(c, sw, sh) {
+  const l = clamp(c.cropL || 0, 0, 0.9), t = clamp(c.cropT || 0, 0, 0.9);
+  const r = clamp(c.cropR || 0, 0, 0.9 - l), b = clamp(c.cropB || 0, 0, 0.9 - t);
+  return { sx: sw * l, sy: sh * t, sw: sw * (1 - l - r), sh: sh * (1 - t - b) };
+}

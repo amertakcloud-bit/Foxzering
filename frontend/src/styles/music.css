@@ -1,0 +1,35 @@
+.music-player {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.3rem;
+  width: max-content;
+
+  bottom: 1rem;
+  right: 1rem;
+  cursor: pointer;
+
+  z-index: 1000;
+  .music-icon {
+    display: flex;
+    i {
+      align-items: center;
+      grid-area: 1/1;
+      display: flex;
+      color: var(--text);
+      border-radius: 100px;
+      background: var(--bg);
+      padding: 0.5rem;
+    }
+  }
+
+  span {
+    color: var(--bg);
+    font-family: "Kantumruy Bold";
+  }
+}
